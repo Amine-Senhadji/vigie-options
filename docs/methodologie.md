@@ -17,6 +17,8 @@ La variation est calculée **contrat par contrat** (même symbole d'option, donc
 
 Yahoo met souvent l'open interest à jour avec une séance de retard. C'est pourquoi il est recommandé de lancer la collecte le matin, avant l'ouverture américaine.
 
+**Contrôle de qualité.** Yahoo renvoie parfois une chaîne dont l'open interest vaut 0 sur la plupart des contrats, puis des valeurs normales pour la même séance quelques minutes plus tard. Pour chaque ticker, `compare.py` calcule la part de contrats dont l'open interest vaut 0 (sur le total des contrats collectés), le jour et la veille (`qualite_open_interest`). Si cette part dépasse 50 % l'un des deux jours (`SEUIL_PART_OI_ZERO`), la variation d'open interest est marquée `non fiable` avec la raison, et le marquage vaut `NON EVALUABLE`.
+
 ## 3. Le cours a-t-il bougé « en proportion » ?
 
 Le mouvement du jour est rapporté à l'écart-type des variations quotidiennes des 30 séances précédentes (**z-score du mouvement**). Un z-score inférieur à 1 en valeur absolue signifie un mouvement ordinaire pour ce titre : une forte activité sur les options n'a alors pas de contrepartie visible sur le cours.
@@ -31,7 +33,7 @@ Un ticker est marqué `candidat` si les trois conditions sont réunies :
 | Nouvelles positions ouvertes | variation d'open interest totale > 0 | – |
 | Cours peu affecté | \|z-score du mouvement\| < 1 | `SEUIL_Z_PRIX` |
 
-En dessous de 10 séances d'historique (`MIN_JOURS_HISTORIQUE`), le marquage vaut `NON EVALUABLE`. Les seuils sont volontairement simples, affichés dans chaque fichier de comparaison et modifiables en haut de `scripts/compare.py`. L'analyste part de ce marquage mais peut signaler un cas limite en expliquant pourquoi.
+En dessous de 10 séances d'historique (`MIN_JOURS_HISTORIQUE`), ou si plus de 50 % des contrats ont un open interest à 0 le jour ou la veille (`SEUIL_PART_OI_ZERO`, voir section 2), le marquage vaut `NON EVALUABLE`. Les seuils sont volontairement simples, affichés dans chaque fichier de comparaison et modifiables en haut de `scripts/compare.py`. L'analyste part de ce marquage mais peut signaler un cas limite en expliquant pourquoi.
 
 ## 5. Fiabilité de l'historique
 

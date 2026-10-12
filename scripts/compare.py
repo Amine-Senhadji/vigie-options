@@ -23,6 +23,7 @@ FENETRE = 30
 SEUIL_RANG_VOLUME = 90  # volume d'options >= 90e centile de son propre historique
 MIN_JOURS_HISTORIQUE = 10  # en dessous, on ne qualifie pas un volume d'inhabituel
 SEUIL_Z_PRIX = 1.0  # mouvement du cours < 1 écart-type de ses variations récentes
+SEUIL_PART_OI_ZERO = 0.5  # au-delà de 50 % de contrats à open interest 0 (jour ou veille), variation d'OI non fiable
 
 
 def num(v):
@@ -68,6 +69,13 @@ def mouvement_cours(cours):
         res["ecart_type_variations_30j_pct"] = round(st.pstdev(rends), 3)
         res["z_score_mouvement"] = round(var / st.pstdev(rends), 2)
     return res
+
+
+def part_oi_zero(opts):
+    contrats = opts.get("contrats", [])
+    if not contrats:
+        return None
+    return round(sum(1 for c in contrats if num(c.get("open_interest")) == 0) / len(contrats), 4)
 
 
 def variation_oi(jour_opts, veille_opts):
@@ -158,11 +166,28 @@ def analyser(tk, d, veille, precedents):
     else:
         res["open_interest"] = variation_oi(opts, tv["options"])
 
+    # Contrôle de qualité : une chaîne majoritairement à 0 rend la variation d'open interest non fiable
+    parts = {"jour": part_oi_zero(opts), "veille": part_oi_zero(tv.get("options", {})) if tv else None}
+    res["qualite_open_interest"] = {
+        "seuil_part_oi_zero_max": SEUIL_PART_OI_ZERO,
+        **{f"part_oi_zero_{k}": v if v is not None else INDISPO for k, v in parts.items()},
+    }
+    excedents = [f"{k} : {v:.0%}" for k, v in parts.items() if v is not None and v > SEUIL_PART_OI_ZERO]
+    if excedents:
+        raison = (
+            f"open interest à 0 sur plus de {SEUIL_PART_OI_ZERO:.0%} des contrats ({', '.join(excedents)}) : "
+            "chaîne possiblement incomplète ou périmée à la source"
+        )
+        res["open_interest"].update(fiabilite="non fiable", raison=raison)
+        res["avertissements"].append(raison)
+
     # Marquage candidat selon des critères fixes et affichés
     vo, oi, mv = res["volume_options"], res["open_interest"], res["cours"]
     if n < MIN_JOURS_HISTORIQUE:
         candidat = "NON EVALUABLE"
         res["avertissements"].append(f"historique de {n} séances : trop court pour qualifier un volume d'inhabituel")
+    elif oi.get("fiabilite") == "non fiable":
+        candidat = "NON EVALUABLE"
     elif num(vo.get("rang_percentile")) is None or "delta_total_calls" not in oi:
         candidat = "NON EVALUABLE"
         res["avertissements"].append("volume d'options ou variation d'open interest non mesurable aujourd'hui")
@@ -202,6 +227,7 @@ def main():
             "jours_historique_min": MIN_JOURS_HISTORIQUE,
             "delta_open_interest_total": "> 0",
             "z_score_mouvement_cours_max_absolu": SEUIL_Z_PRIX,
+            "part_contrats_oi_zero_max": SEUIL_PART_OI_ZERO,
         },
         "tickers": {},
     }
