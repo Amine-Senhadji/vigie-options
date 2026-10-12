@@ -6,4 +6,5 @@ Ce projet surveille l'activité sur les options d'une watchlist. Il produit des 
 - On décrit une activité, jamais une intention (« les institutionnels se positionnent » est interdit).
 - Une donnée manquante reste INDISPONIBLE : pas d'estimation, pas de chiffre de mémoire.
 - Les calculs sont faits par `scripts/compare.py`, pas de tête.
+- Le journal `suivi/journal.csv` est écrit uniquement par `scripts/suivi.py`. Aucun agent ne le modifie.
 - Les données Yahoo Finance (yfinance) sont non officielles, différées et parfois fausses.

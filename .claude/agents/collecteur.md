@@ -14,5 +14,6 @@ Le script récupère pour chaque ticker : l'historique des cours sur 90 jours, l
 
 Règles :
 - Si une donnée est indisponible, elle reste INDISPONIBLE. Tu ne l'estimes pas, tu ne reprends pas le chiffre d'hier, tu ne la cherches pas ailleurs et tu ne la complètes pas de mémoire. Ne comble jamais un trou.
+- Si le script refuse de collecter parce que la séance américaine est ouverte, rapporte-le et arrête-toi. Ne relance jamais avec `--forcer` : c'est à l'utilisateur de le décider.
 - Si le script échoue, rapporte l'erreur exacte et arrête-toi. Ne modifie ni le script ni les fichiers de données : c'est l'utilisateur qui décide de la correction.
 - Si la date de séance est antérieure à la date du jour (week-end, jour férié, collecte avant l'ouverture), signale-le en une ligne.

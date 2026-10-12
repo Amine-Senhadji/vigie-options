@@ -1,11 +1,11 @@
 [project]
 name = "vigie-options"
-version = "1.0.0"
+version = "1.1.0"
 description = "Trois agents Claude Code qui repèrent une activité inhabituelle sur les options d'une watchlist, sans jamais recommander d'opération."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
-dependencies = ["yfinance>=0.2.54", "pandas>=2.0"]
+dependencies = ["yfinance>=0.2.54", "pandas>=2.0", "tzdata; sys_platform == \"win32\""]
 
 [tool.ruff]
 line-length = 130
@@ -20,4 +20,4 @@ testpaths = ["tests"]
 pythonpath = ["scripts"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["collect", "compare", "conftest"]
+known-first-party = ["collect", "compare", "conftest", "suivi"]

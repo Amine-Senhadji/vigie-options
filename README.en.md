@@ -25,10 +25,11 @@ Run them all with the `/bourse` command in Claude Code.
 ## Design choices
 
 - **Numbers are computed in tested Python** (`scripts/compare.py`), never by the model. Agents describe a file of computed results.
-- **Open interest is compared contract by contract**, to tell newly opened positions from closed ones.
+- **Open interest is compared contract by contract, on the contracts where volume concentrated**, to tell newly opened positions from closed ones. Stale or one-session-late open interest is detected.
+- **No collection during the US session**: partial volumes would pollute the history (`--forcer` overrides it on US holidays).
 - **"Unusual" is measured against each ticker's own history** (percentile rank, then z-score), never in absolute terms.
 - **No gaps are ever filled**: missing data stays `INDISPONIBLE` (unavailable).
-- **A tracking journal** records every flag so you can measure the real hit rate after a few months.
+- **A tracking journal kept by Python** (`scripts/suivi.py`, never by an agent) records every flag, fills in the price 14 days later and compares it with the other, unflagged tickers. `python3 scripts/suivi.py bilan` summarises it, without drawing conclusions under 30 flags.
 
 yfinance provides no options history, so the project builds its own from daily snapshots: flags become possible after 10 sessions and reliable after 20.
 

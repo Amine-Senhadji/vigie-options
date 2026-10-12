@@ -38,11 +38,11 @@ Le volume d'options est l'un des rares endroits où une activité importante dev
 `vigie-options` est conçu autour de ce piège :
 
 - 🧮 **Les chiffres sont calculés en Python, testés, jamais de tête.** Les agents décrivent un fichier de calculs, ils ne le produisent pas.
-- 🔍 **L'open interest est comparé contrat par contrat**, pour distinguer les positions ouvertes des positions fermées.
+- 🔍 **L'open interest est comparé contrat par contrat, sur les contrats où le volume s'est concentré**, pour distinguer les positions ouvertes des positions fermées. Un open interest figé ou en retard d'une séance est détecté.
 - 📏 **L'inhabituel se mesure contre l'historique propre de chaque titre**, pas en valeur absolue.
 - 🚫 **Aucune recommandation, aucun « haussier » ni « baissier ».** Une activité est décrite comme une activité, avec d'abord son explication la plus banale.
 - 🕳️ **Aucun trou comblé.** Une donnée manquante reste `INDISPONIBLE`.
-- 📒 **Un journal de suivi** pour mesurer, au bout de quelques mois, ce que valent vraiment les signalements.
+- 📒 **Un journal de suivi tenu par Python**, complété automatiquement à J+14 et comparé à des témoins, pour mesurer au bout de quelques mois ce que valent vraiment les signalements.
 
 ## Comment ça marche
 
@@ -53,7 +53,8 @@ flowchart LR
     P -->|calculs| A[🔬 analyste]
     A -->|description| V[🔭 vigie]
     V --> R[5 titres max<br/>à regarder]
-    V --> J[journal de suivi]
+    V -->|signalements| S[⚙️ suivi.py]
+    S --> J[journal de suivi]
 ```
 
 | Agent | Son seul travail | Ce qu'il n'a pas le droit de faire |
@@ -92,13 +93,16 @@ claude
 | `donnees/comparaison-AAAA-MM-JJ.json` | Rangs, moyennes, variation d'open interest contrat par contrat |
 | `rapports/analyse-AAAA-MM-JJ.md` | Description de l'analyste |
 | `rapports/vigie-AAAA-MM-JJ.md` | Liste de recherche du jour |
-| `suivi/journal.csv` | Un signalement par ligne, à compléter à J+14 |
+| `rapports/signalements-AAAA-MM-JJ.json` | Signalements de la vigie, lus par `suivi.py` |
+| `suivi/journal.csv` | Un signalement par ligne, cours à J+14 et témoins complétés automatiquement |
 
 Ces dossiers sont exclus de Git : tes données et ta watchlist de travail restent chez toi.
 
 ### Quand le lancer
 
 Le matin, avant l'ouverture américaine (15 h 30, heure de Paris). Le volume est alors celui de la séance de la veille et l'open interest a été mis à jour pendant la nuit. Lance-le à la même heure chaque jour.
+
+Pendant la séance américaine, `collect.py` refuse de collecter : les volumes seraient partiels. Un jour férié aux États-Unis, que le script ne connaît pas, relance avec `--forcer`. Le fichier est alors exclu de l'historique.
 
 ### Le premier mois
 
@@ -117,6 +121,14 @@ Pour ne perdre aucune séance, automatise la seule collecte (sans Claude) avec c
 0 9 * * 1-5 cd /chemin/vers/vigie-options && .venv/bin/python scripts/collect.py >> donnees/cron.log 2>&1
 ```
 
+### Mesurer ce que valent les signalements
+
+```bash
+.venv/bin/python scripts/suivi.py bilan
+```
+
+Le bilan compare le mouvement absolu des titres signalés à J+14 à celui des autres titres de ta watchlist sur la même période. Il ne dit rien de la direction et ne conclut pas en dessous de 30 signalements. La colonne `ce_qui_s_est_passe` du journal est à remplir à la main. Détails : [méthodologie](docs/methodologie.md#9-le-journal-de-suivi).
+
 ### Régler les critères
 
 Les seuils sont en haut de [`scripts/compare.py`](scripts/compare.py) et expliqués dans la [méthodologie](docs/methodologie.md). L'horizon des échéances suivies se règle avec `scripts/collect.py --horizon 60`.
@@ -130,7 +142,8 @@ vigie-options/
 │   └── commands/        bourse.md  →  la commande /bourse
 ├── scripts/
 │   ├── collect.py       collecte Yahoo Finance (yfinance)
-│   └── compare.py       calculs de comparaison
+│   ├── compare.py       calculs de comparaison
+│   └── suivi.py         journal de suivi et bilan
 ├── tests/               tests sur données simulées, sans réseau
 ├── docs/                architecture · méthodologie
 ├── exemples/            exemple de sortie de la vigie
@@ -145,17 +158,29 @@ vigie-options/
 .venv/bin/pytest
 ```
 
-Les tests simulent Yahoo Finance : ils vérifient qu'un choc de volume avec ouverture de positions est bien signalé, qu'un fort mouvement du cours l'écarte, qu'un historique trop court n'est jamais qualifié, et qu'un week-end n'est pas compté comme une séance. La CI les exécute sur Python 3.10, 3.11 et 3.12 à chaque push.
+Les tests simulent Yahoo Finance. Ils vérifient notamment :
+
+- qu'un choc de volume avec ouverture de positions est signalé, et qu'un fort mouvement du cours l'écarte ;
+- qu'une hausse d'open interest hors des contrats les plus échangés ne suffit pas ;
+- qu'un open interest figé ou en retard d'une séance est détecté ;
+- qu'un historique trop court n'est jamais qualifié, qu'un week-end n'est pas compté comme une séance, et qu'une collecte pendant la séance est exclue ;
+- que le journal refuse un ticker inventé, ne double aucune ligne et se complète à J+14 avec ses témoins.
+
+La CI les exécute sur Python 3.10, 3.11 et 3.12 à chaque push.
 
 ## Limites
 
 - **Le volume d'options ne donne pas la direction.** C'est un filtre d'attention, pas une fenêtre sur « l'argent intelligent ».
 - **Les données gratuites sont en différé et parfois fausses.** yfinance est une source non officielle, réservée à un usage personnel, qui peut casser sans prévenir. En cas d'erreur : `.venv/bin/pip install -U yfinance`.
+- **L'open interest de Yahoo est souvent en retard d'une séance.** Le décalage est détecté quand il est net, pas corrigé.
+- **Les jours fériés américains ne sont pas connus** de `collect.py` (voir `--forcer`).
 - **Un signalement est le début d'une recherche, pas une décision.**
 
 ## Crédits
 
-Adapté du système en trois agents décrit par Ray Fu, dans sa version française publiée par [Core Labs](https://corelabs.studio). Cette implémentation ajoute le calcul déterministe des comparaisons, le suivi de l'open interest contrat par contrat, la gestion de l'historique et les tests.
+Adapté du système en trois agents décrit par Ray Fu, dans sa version française publiée par [Core Labs](https://corelabs.studio). Cette implémentation ajoute le calcul déterministe des comparaisons, le suivi de l'open interest contrat par contrat, les contrôles de qualité, la gestion de l'historique, le journal de suivi avec témoins et les tests.
+
+Historique des versions : [CHANGELOG](CHANGELOG.md).
 
 ## Avertissement
 

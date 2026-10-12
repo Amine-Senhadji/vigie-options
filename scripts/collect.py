@@ -4,8 +4,10 @@
 Sortie : donnees/brut-AAAA-MM-JJ.json
 Toute donnée manquante est écrite "INDISPONIBLE", jamais estimée.
 
-Usage : python3 scripts/collect.py [--horizon 60]
+Usage : python3 scripts/collect.py [--horizon 60] [--forcer]
   --horizon : n'enregistre que les échéances d'options à moins de N jours (défaut 60).
+  --forcer  : collecte même pendant la séance américaine. Le fichier est alors marqué
+              et compare.py l'exclut de l'historique (séance incomplète).
 """
 
 import argparse
@@ -14,7 +16,9 @@ import math
 import sys
 import time
 from datetime import date, datetime, timedelta
+from datetime import time as heure
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yfinance as yf
@@ -25,10 +29,21 @@ DOSSIER = RACINE / "donnees"
 INDISPO = "INDISPONIBLE"
 SOURCE = f"Yahoo Finance via yfinance {yf.__version__} (non officiel, différé)"
 PAUSE = 0.5  # secondes entre deux requêtes, pour ne pas se faire bloquer
+NEW_YORK = ZoneInfo("America/New_York")
+OUVERTURE, FERMETURE = heure(9, 30), heure(16, 0)  # séance américaine, heure de New York
 
 
 def maintenant():
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def seance_en_cours(instant=None):
+    """Vrai si la séance américaine est ouverte : les volumes du jour seraient partiels.
+
+    Les jours fériés ne sont pas connus : un jour férié en semaine est vu comme ouvert.
+    """
+    t = (instant or datetime.now(NEW_YORK)).astimezone(NEW_YORK)
+    return t.weekday() < 5 and OUVERTURE <= t.time() < FERMETURE
 
 
 def nombre(v, entier=False):
@@ -182,7 +197,15 @@ def collecter_evenements(t, jours=30, aujourdhui=None):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--horizon", type=int, default=60)
+    p.add_argument("--forcer", action="store_true", help="collecter même pendant la séance américaine")
     args = p.parse_args()
+
+    en_seance = seance_en_cours()
+    if en_seance and not args.forcer:
+        sys.exit(
+            "La séance américaine est ouverte (9 h 30 – 16 h, heure de New York) : les volumes du jour seraient partiels. "
+            "Relance après la clôture ou demain matin. Jour férié aux États-Unis ? Relance avec --forcer."
+        )
 
     tickers = lire_watchlist()
     print(f"vigie-options : collecte de {len(tickers)} ticker(s)", file=sys.stderr)
@@ -196,6 +219,7 @@ def main():
         "horodatage_debut": maintenant(),
         "source": SOURCE,
         "horizon_echeances_jours": args.horizon,
+        "collecte_pendant_seance": en_seance,
         "tickers": {},
     }
 
@@ -214,6 +238,8 @@ def main():
     sortie.write_text(json.dumps(donnees, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
 
     print(f"Fichier : {sortie.relative_to(RACINE)}")
+    if en_seance:
+        print("  ATTENTION : collecte pendant la séance, fichier exclu de l'historique par compare.py")
     for tk, d in donnees["tickers"].items():
         manquants = [bloc for bloc in ("cours", "options", "evenements") if d[bloc].get("statut") == INDISPO]
         seance = d["cours"].get("date_seance", INDISPO)

@@ -10,6 +10,7 @@ import pytest
 
 import collect
 import compare
+import suivi
 
 ECHEANCES = ["2026-08-28", "2026-09-18", "2026-12-18"]
 
@@ -76,6 +77,18 @@ def dossier(tmp_path, monkeypatch):
     monkeypatch.setattr(collect, "PAUSE", 0)
     monkeypatch.setattr(compare, "DOSSIER", tmp_path)
     monkeypatch.setattr(compare, "RACINE", tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
+def projet(tmp_path, monkeypatch):
+    """Arborescence complète pour suivi.py : donnees/, rapports/, suivi/."""
+    for nom in ("donnees", "rapports", "suivi"):
+        (tmp_path / nom).mkdir()
+    monkeypatch.setattr(suivi, "RACINE", tmp_path)
+    monkeypatch.setattr(suivi, "DONNEES", tmp_path / "donnees")
+    monkeypatch.setattr(suivi, "RAPPORTS", tmp_path / "rapports")
+    monkeypatch.setattr(suivi, "JOURNAL", tmp_path / "suivi" / "journal.csv")
     return tmp_path
 
 

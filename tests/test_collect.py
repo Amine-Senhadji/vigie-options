@@ -60,3 +60,26 @@ def test_source_en_panne_donne_indisponible():
     assert collect.collecter_cours(Panne())["statut"] == INDISPO
     assert collect.collecter_options(Panne(), 60)["statut"] == INDISPO
     assert collect.collecter_evenements(Panne())["statut"] == INDISPO
+
+
+def test_seance_en_cours_selon_l_heure_de_new_york():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    paris, ny = ZoneInfo("Europe/Paris"), ZoneInfo("America/New_York")
+    assert collect.seance_en_cours(datetime(2026, 10, 13, 9, 0, tzinfo=paris)) is False  # avant l'ouverture
+    assert collect.seance_en_cours(datetime(2026, 10, 13, 17, 0, tzinfo=paris)) is True  # 11 h à New York
+    assert collect.seance_en_cours(datetime(2026, 10, 13, 16, 0, tzinfo=ny)) is False  # clôture
+    assert collect.seance_en_cours(datetime(2026, 10, 17, 11, 0, tzinfo=ny)) is False  # samedi
+
+
+def test_collecte_refusee_pendant_la_seance(monkeypatch, tmp_path):
+    import pytest
+
+    monkeypatch.setattr(collect, "seance_en_cours", lambda: True)
+    monkeypatch.setattr(collect, "lire_watchlist", lambda: ["AAPL"])
+    monkeypatch.setattr(collect, "DOSSIER", tmp_path)
+    monkeypatch.setattr("sys.argv", ["collect.py"])
+    with pytest.raises(SystemExit, match="séance américaine est ouverte"):
+        collect.main()
+    assert not list(tmp_path.iterdir())
