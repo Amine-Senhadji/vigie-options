@@ -16,7 +16,7 @@ Les tests utilisent des données simulées (`tests/conftest.py`) et ne font aucu
 ## Règles du projet
 
 1. **Aucune recommandation.** Aucun prompt ni aucune sortie ne doit inciter à acheter, vendre ou dimensionner une position.
-2. **Les calculs restent en Python.** Toute nouvelle mesure va dans `scripts/compare.py`, avec un test, pas dans un prompt.
+2. **Les calculs restent en Python.** Toute nouvelle mesure va dans `scripts/compare.py` (ou `scripts/suivi.py` pour le journal), avec un test, pas dans un prompt. Aucun agent n'écrit de chiffre dans un fichier de données.
 3. **Pas de trou comblé.** Une donnée manquante reste `INDISPONIBLE`.
 4. **Tout seuil est explicite** : une constante nommée, documentée dans `docs/methodologie.md` et recopiée dans le fichier de comparaison.
 
