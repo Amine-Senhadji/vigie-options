@@ -1,0 +1,5 @@
+# Un ticker par ligne (code Yahoo Finance). Les lignes commençant par # sont ignorées.
+# Exemples : actions américaines avec options listées.
+AAPL
+MSFT
+NVDA

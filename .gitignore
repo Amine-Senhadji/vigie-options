@@ -1,0 +1,19 @@
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Données personnelles produites chaque jour (ne pas publier)
+donnees/*
+!donnees/.gitkeep
+rapports/*
+!rapports/.gitkeep
+suivi/*
+!suivi/.gitkeep
+
+# Système
+.DS_Store
+Thumbs.db
+.claude/settings.local.json

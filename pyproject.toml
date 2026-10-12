@@ -1,0 +1,23 @@
+[project]
+name = "vigie-options"
+version = "1.0.0"
+description = "Trois agents Claude Code qui repèrent une activité inhabituelle sur les options d'une watchlist, sans jamais recommander d'opération."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = ["yfinance>=0.2.54", "pandas>=2.0"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # caractères typographiques français dans les textes
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["collect", "compare", "conftest"]
