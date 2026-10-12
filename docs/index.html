@@ -257,7 +257,7 @@ h2{font-family:var(--display);font-weight:800;font-size:clamp(2.4rem,5.4vw,4.8re
           <article class="station">
             <span class="wp" data-target>1</span>
             <h3>Collecteur</h3>
-            <p>Récupère les cours, la chaîne d'options complète, l'open interest et les dates de résultats.</p>
+            <p>Récupère les cours, la chaîne d'options des échéances à moins de 60 jours, l'open interest et les dates de résultats.</p>
             <p class="never"><strong>Ne fait jamais :</strong> estimer une donnée manquante. Elle reste « indisponible ».</p>
           </article>
           <article class="station">
@@ -315,11 +315,13 @@ h2{font-family:var(--display);font-weight:800;font-size:clamp(2.4rem,5.4vw,4.8re
       <h2 id="t4">Fait pour être vérifié,<br>pas cru sur parole</h2>
       <div class="trust">
         <ul class="checks">
-          <li>Tous les calculs sont en Python, couverts par 13 tests sur données simulées, sans appel réseau.</li>
-          <li>Les tests tournent à chaque push sur Python 3.10, 3.11 et 3.12.</li>
-          <li>Une donnée manquante reste « indisponible ». Rien n'est estimé ni recopié de la veille.</li>
-          <li>Un open interest majoritairement à zéro est marqué non fiable et bloque tout signalement.</li>
-          <li>Un journal garde chaque signalement, pour mesurer au bout de quelques mois ce qu'ils valent vraiment.</li>
+          <li>Calculs en Python, 29 tests sans appel réseau, CI sur Python 3.10 à 3.12.</li>
+          <li>Une donnée manquante reste « indisponible », jamais estimée.</li>
+          <li>Un open interest nul, figé ou en retard d'une séance est repéré.</li>
+          <li>Les positions ouvertes se mesurent sur les contrats les plus échangés.</li>
+          <li>Pas de collecte en pleine séance : les volumes seraient partiels.</li>
+          <li>Nouvelles échéances et échéances mensuelles sont signalées.</li>
+          <li>Un journal compare chaque signalement à J+14 aux titres non signalés.</li>
         </ul>
         <div class="install">
           <h3>Installer en quelques commandes</h3>
