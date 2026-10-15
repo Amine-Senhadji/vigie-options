@@ -176,6 +176,17 @@ La CI les exécute sur Python 3.10, 3.11 et 3.12 à chaque push.
 - **Les jours fériés américains ne sont pas connus** de `collect.py` (voir `--forcer`).
 - **Un signalement est le début d'une recherche, pas une décision.**
 
+## Dépannage
+
+| Symptôme | Cause probable | Solution |
+|---|---|---|
+| `collect.py` refuse de collecter | La séance américaine est en cours, les volumes seraient partiels | Relance le matin, avant 15 h 30 (heure de Paris) |
+| Aucune donnée un jour de semaine | Jour férié aux États-Unis, inconnu du script | Relance avec `--forcer` (le fichier sera exclu de l'historique) |
+| Erreur de téléchargement Yahoo Finance | yfinance a changé ou Yahoo bloque temporairement | `.venv/bin/pip install -U yfinance`, puis relance |
+| Un ticker ne donne aucun résultat | Pas d'options listées, ou code Yahoo incorrect | Vérifie le code sur Yahoo Finance (actions américaines surtout) |
+| Aucun volume qualifié d'inhabituel | Historique trop court (moins de 10 séances) | Normal le premier mois : automatise la collecte avec cron |
+| Open interest identique à la veille | Open interest de Yahoo en retard d'une séance | Le décalage est détecté et signalé ; relance plus tard dans la matinée |
+
   ## Contribuer
 
 Les retours sont les bienvenus, surtout sur la méthodologie et les cas où un signalement t'a paru absurde.
