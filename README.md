@@ -176,6 +176,22 @@ La CI les exécute sur Python 3.10, 3.11 et 3.12 à chaque push.
 - **Les jours fériés américains ne sont pas connus** de `collect.py` (voir `--forcer`).
 - **Un signalement est le début d'une recherche, pas une décision.**
 
+  ## Contribuer
+
+Les retours sont les bienvenus, surtout sur la méthodologie et les cas où un signalement t'a paru absurde.
+
+- **Un bug ou une donnée bizarre ?** Ouvre une [issue](https://github.com/Amine-Senhadji/vigie-options/issues) avec la commande lancée, la date et, si possible, le fichier `donnees/comparaison-AAAA-MM-JJ.json` concerné (sans ta watchlist si tu préfères la garder pour toi).
+- **Une amélioration ?** Ouvre une pull request depuis une branche dédiée. Avant de l'envoyer, vérifie que les tests passent :
+
+```bash
+  .venv/bin/pip install -r requirements-dev.txt
+  .venv/bin/pytest
+```
+
+- **Une règle des agents à modifier ?** Explique dans la pull request quel piège elle évite ou quel cas elle couvre : chaque règle de `CLAUDE.md` et de `.claude/agents/` existe pour une raison.
+
+Aucune contribution ne doit ajouter de recommandation d'achat ou de vente, ni qualifier une activité de haussière ou baissière.
+
 ## Crédits
 
 Adapté du système en trois agents décrit par Ray Fu, dans sa version française publiée par [Core Labs](https://corelabs.studio). Cette implémentation ajoute le calcul déterministe des comparaisons, le suivi de l'open interest contrat par contrat, les contrôles de qualité, la gestion de l'historique, le journal de suivi avec témoins et les tests.
