@@ -46,6 +46,17 @@ claude
 
 Tests run on simulated data with no network access: `pip install -r requirements-dev.txt && pytest`.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `collect.py` refuses to collect | The US session is open, so volumes would be partial | Run it in the morning, before 9:30 a.m. New York time |
+| No data on a weekday | US market holiday, unknown to the script | Run again with `--forcer` (the file is excluded from the history) |
+| Yahoo Finance download error | yfinance changed or Yahoo is blocking temporarily | `.venv/bin/pip install -U yfinance`, then run again |
+| A ticker returns nothing | No listed options, or wrong Yahoo symbol | Check the symbol on Yahoo Finance (mostly US stocks) |
+| No volume flagged as unusual | History too short (fewer than 10 sessions) | Expected in the first month: automate collection with cron |
+| Open interest identical to the day before | Yahoo's open interest lags one session | The lag is detected and flagged; run again later in the morning |
+
 ## Disclaimer
 
 Options volume does not reveal direction: every contract has a buyer and a seller. yfinance is an unofficial, delayed data source for personal use. **Nothing here is investment advice.**
