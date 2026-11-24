@@ -100,7 +100,11 @@ Ces dossiers sont exclus de Git : tes données et ta watchlist de travail resten
 
 ### Quand le lancer
 
-Le matin, avant l'ouverture américaine (15 h 30, heure de Paris). Le volume est alors celui de la séance de la veille et l'open interest a été mis à jour pendant la nuit. Lance-le à la même heure chaque jour.
+Le soir, après la clôture américaine : à partir de 22 h 30, heure de Paris. Le volume de la séance est alors définitif et l'open interest est complet. Lance-le à la même heure chaque jour.
+
+Pourquoi pas le matin : avant l'ouverture, Yahoo met l'open interest à jour et le renvoie à 0 sur une grande partie de la chaîne. Sur deux collectes réelles du 12 octobre 2026, l'open interest était à 0 sur 31 % des contrats AAPL le matin (13 h 22), contre 3 % le soir (23 h 49). Entre ces deux collectes, aucun contrat n'avait changé d'open interest, ni sur AAPL, ni sur MSFT, ni sur NVDA (hors contrats à 0 le matin) : l'open interest est publié une fois par jour, avant l'ouverture, et ne bouge plus ensuite.
+
+Ce que cela implique : le soir, l'open interest décrit les positions à la fin de la séance précédente. La variation mesurée d'un soir à l'autre correspond donc aux échanges de la veille, pas à ceux du jour. `compare.py` le signale quand c'est net (`alignement_volume`), et la vigie plafonne alors sa confiance à « faible ».
 
 Pendant la séance américaine, `collect.py` refuse de collecter : les volumes seraient partiels. Un jour férié aux États-Unis, que le script ne connaît pas, relance avec `--forcer`. Le fichier est alors exclu de l'historique.
 
@@ -122,7 +126,7 @@ Une séance de bourse sans collecte ne se rattrape pas. `compare.py` la détecte
 Pour ne perdre aucune séance, automatise la seule collecte (sans Claude) avec cron :
 
 ```cron
-0 9 * * 1-5 cd /chemin/vers/vigie-options && .venv/bin/python scripts/collect.py >> donnees/cron.log 2>&1
+30 22 * * 1-5 cd /chemin/vers/vigie-options && .venv/bin/python scripts/collect.py >> donnees/cron.log 2>&1
 ```
 
 ### Mesurer ce que valent les signalements
@@ -187,12 +191,13 @@ La CI les exécute sur Python 3.10, 3.11 et 3.12 à chaque push.
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
-| `collect.py` refuse de collecter | La séance américaine est en cours, les volumes seraient partiels | Relance le matin, avant 15 h 30 (heure de Paris) |
+| `collect.py` refuse de collecter | La séance américaine est en cours, les volumes seraient partiels | Relance après la clôture, à partir de 22 h 30 (heure de Paris) |
 | Aucune donnée un jour de semaine | Jour férié aux États-Unis, inconnu du script | Relance avec `--forcer` (le fichier sera exclu de l'historique) |
 | Erreur de téléchargement Yahoo Finance | yfinance a changé ou Yahoo bloque temporairement | `.venv/bin/pip install -U yfinance`, puis relance |
 | Un ticker ne donne aucun résultat | Pas d'options listées, ou code Yahoo incorrect | Vérifie le code sur Yahoo Finance (actions américaines surtout) |
 | Aucun volume qualifié d'inhabituel | Historique trop court (moins de 10 séances) | Normal le premier mois : automatise la collecte avec cron |
-| Open interest identique à la veille | Open interest de Yahoo en retard d'une séance | Le décalage est détecté et signalé ; relance plus tard dans la matinée |
+| Open interest identique à la veille | Deux collectes faites sur la même publication de l'open interest (il n'est publié qu'une fois par jour, avant l'ouverture) | Il est marqué non fiable ; collecte une fois par séance, le soir |
+| Open interest à 0 sur une grande partie des contrats | Collecte faite le matin, pendant la mise à jour de Yahoo | Il est marqué non fiable ; collecte le soir, après la clôture |
 
   ## Contribuer
 

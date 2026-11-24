@@ -4,6 +4,7 @@
 
 ### Collecte
 
+- La collecte est désormais recommandée le soir, après la clôture américaine (22 h 30 à Paris) : le matin, Yahoo renvoie l'open interest à 0 sur une grande partie de la chaîne.
 - `collect.py` retente les requêtes que Yahoo fait échouer (erreur ou réponse vide) : 3 essais, avec une pause de 2 puis 4 secondes.
 - Si aucun ticker n'a pu être collecté, le script n'écrit aucun fichier et sort avec le code 1. Une collecte réussie plus tôt le même jour n'est donc plus écrasée par une panne.
 - Une chaîne d'options renvoyée vide est notée dans `echeances_en_echec` au lieu d'interrompre le script.
