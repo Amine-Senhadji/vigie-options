@@ -72,9 +72,15 @@ def jours_ouvres(debut, n):
     return jours
 
 
+@pytest.fixture(autouse=True)
+def sans_attente(monkeypatch):
+    """Aucun test n'attend réellement : ni entre deux requêtes, ni avant une nouvelle tentative."""
+    monkeypatch.setattr(collect, "PAUSE", 0)
+    monkeypatch.setattr(collect, "PAUSE_REPRISE", 0)
+
+
 @pytest.fixture
 def dossier(tmp_path, monkeypatch):
-    monkeypatch.setattr(collect, "PAUSE", 0)
     monkeypatch.setattr(compare, "DOSSIER", tmp_path)
     monkeypatch.setattr(compare, "RACINE", tmp_path)
     return tmp_path

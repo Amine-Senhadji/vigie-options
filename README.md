@@ -33,7 +33,7 @@
 
 ## Pourquoi ce projet
 
-Le volume d'options est l'un des rares endroits où une activité importante devient visible avant de se voir sur le cours. C'est aussi l'un des plus faciles à surinterpréter : chaque contrat a un acheteur et un vendeur, et la même activité peut être un pari, une prime encaissée ou une couverture.
+Le volume d'options est l'un des rares endroits où une activité importante devient visible avant de se voir sur le cours. C'est aussi l'un des plus faciles à surinterpréter : derrière chaque contrat échangé, quelqu'un achète et quelqu'un vend, et une même activité peut traduire un pari, l'encaissement d'une prime ou la protection d'une position.
 
 `vigie-options` est conçu autour de ce piège :
 
@@ -61,13 +61,13 @@ flowchart LR
 |---|---|---|
 | **collecteur** | Récupérer cours, chaîne d'options, open interest et événements à venir | Analyser, estimer une donnée manquante |
 | **analyste** | Décrire l'activité par rapport à l'historique du titre | Recommander, qualifier une activité de haussière ou baissière |
-| **vigie** | Sortir au plus 5 titres à regarder, avec l'explication banale la plus probable | Recommander une entrée, une sortie ou une taille de position |
+| **vigie** | Sortir au plus 5 titres à regarder, chacun avec son explication banale la plus vraisemblable | Recommander une entrée, une sortie ou une taille de position |
 
 Détails : [architecture](docs/architecture.md) et [méthodologie](docs/methodologie.md).
 
 ## Installation
 
-Prérequis : Python 3.10 ou plus récent, et [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) avec un abonnement Claude Pro ou Max.
+Prérequis : Python 3.10 ou plus récent, et [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), qui demande une formule Claude Pro ou Max.
 
 ```bash
 git clone https://github.com/Amine-Senhadji/vigie-options.git
@@ -104,6 +104,8 @@ Le matin, avant l'ouverture américaine (15 h 30, heure de Paris). Le volume est
 
 Pendant la séance américaine, `collect.py` refuse de collecter : les volumes seraient partiels. Un jour férié aux États-Unis, que le script ne connaît pas, relance avec `--forcer`. Le fichier est alors exclu de l'historique.
 
+Quand Yahoo ne répond pas, chaque requête est retentée deux fois, après 2 puis 4 secondes. Si aucun ticker n'a pu être collecté, aucun fichier n'est écrit et le script sort avec un code non nul.
+
 ### Le premier mois
 
 yfinance ne fournit aucun historique d'options : le projet construit le sien, une collecte par jour.
@@ -114,6 +116,8 @@ yfinance ne fournit aucun historique d'options : le projet construit le sien, un
 | 2 à 9 | Variation d'open interest, mais aucun volume qualifié d'inhabituel |
 | 10 à 19 | Signalements possibles, confiance plafonnée à « faible » |
 | 20 et plus | Comparaisons complètes |
+
+Une séance de bourse sans collecte ne se rattrape pas. `compare.py` la détecte et l'affiche en avertissement (« SÉANCES MANQUANTES »), parce que la variation d'open interest couvre alors plusieurs séances. La vigie plafonne dans ce cas sa confiance à « faible ».
 
 Pour ne perdre aucune séance, automatise la seule collecte (sans Claude) avec cron :
 
@@ -164,17 +168,19 @@ Les tests simulent Yahoo Finance. Ils vérifient notamment :
 - qu'une hausse d'open interest hors des contrats les plus échangés ne suffit pas ;
 - qu'un open interest figé ou en retard d'une séance est détecté ;
 - qu'un historique trop court n'est jamais qualifié, qu'un week-end n'est pas compté comme une séance, et qu'une collecte pendant la séance est exclue ;
+- qu'une séance sans collecte entre la veille et le jour est signalée, sans jamais compter un week-end ;
+- qu'une requête en échec est retentée après une pause qui double, et qu'un échec de tous les tickers donne un code de sortie non nul sans rien écrire ;
 - que le journal refuse un ticker inventé, ne double aucune ligne et se complète à J+14 avec ses témoins.
 
 La CI les exécute sur Python 3.10, 3.11 et 3.12 à chaque push.
 
 ## Limites
 
-- **Le volume d'options ne donne pas la direction.** C'est un filtre d'attention, pas une fenêtre sur « l'argent intelligent ».
-- **Les données gratuites sont en différé et parfois fausses.** yfinance est une source non officielle, réservée à un usage personnel, qui peut casser sans prévenir. En cas d'erreur : `.venv/bin/pip install -U yfinance`.
+- **Un volume d'options élevé n'indique aucun sens.** Il dit où regarder, pas ce que savent ceux qui ont traité.
+- **Yahoo Finance fournit des données retardées, avec des erreurs occasionnelles.** La bibliothèque yfinance n'a rien d'officiel, ses conditions la limitent à l'usage personnel, et elle peut cesser de fonctionner du jour au lendemain. En cas d'erreur : `.venv/bin/pip install -U yfinance`.
 - **L'open interest de Yahoo est souvent en retard d'une séance.** Le décalage est détecté quand il est net, pas corrigé.
 - **Les jours fériés américains ne sont pas connus** de `collect.py` (voir `--forcer`).
-- **Un signalement est le début d'une recherche, pas une décision.**
+- **Un signalement ouvre une recherche, il ne la conclut pas.**
 
 ## Dépannage
 
@@ -211,7 +217,7 @@ Historique des versions : [CHANGELOG](CHANGELOG.md).
 
 ## Avertissement
 
-Ce projet est un outil de recherche personnel. **Rien ici n'est un conseil en investissement.** Les options comportent un effet de levier et une date d'expiration : on peut avoir raison sur la direction et tout perdre sur le timing. N'investis jamais un argent que tu ne peux pas te permettre de perdre.
+Ce projet est un outil de recherche personnel. **Il ne fournit aucun conseil en investissement.** Un contrat d'option amplifie les gains comme les pertes et cesse d'exister à son échéance : une anticipation juste mais trop précoce peut suffire à perdre toute la mise. N'engage que des sommes dont la perte ne te mettrait pas en difficulté.
 
 ## Licence
 

@@ -4,6 +4,8 @@
 Lit donnees/brut-*.json, compare le jour à la veille et à l'historique propre
 de chaque ticker (jusqu'à 30 collectes précédentes). Les collectes faites pendant
 la séance américaine (volumes partiels) sont exclues de l'historique.
+Les séances de bourse restées sans collecte entre la veille et le jour sont
+détectées et signalées : la variation d'open interest couvre alors plusieurs séances.
 Sortie : donnees/comparaison-AAAA-MM-JJ.json
 
 Usage : python3 scripts/compare.py [AAAA-MM-JJ]
@@ -187,6 +189,25 @@ def echeances(jour_opts, veille_opts, seance):
     }
 
 
+def seances_manquantes(cours, seance, seance_veille):
+    """Séances de bourse sans collecte exploitable entre la veille et le jour.
+
+    Le calendrier vient de l'historique des cours du jour : week-ends et jours fériés
+    n'y figurent pas et ne sont donc jamais comptés comme manquants.
+    """
+    dates = sorted(x["date"] for x in cours.get("historique_90j", []) if x.get("date"))
+    if not dates or seance not in dates or not seance_veille or seance_veille == INDISPO:
+        return {"statut": INDISPO}
+    entre = [d for d in dates if seance_veille < d < seance]
+    return {
+        "seance_veille": seance_veille,
+        "nb": len(entre),
+        "dates": entre,
+        # Veille plus ancienne que l'historique des cours : le décompte n'est qu'un minimum
+        "decompte_minimal": seance_veille < dates[0],
+    }
+
+
 def analyser(tk, d, veille, precedents):
     cours, opts = d.get("cours", {}), d.get("options", {})
     seance = cours.get("date_seance", INDISPO)
@@ -221,6 +242,23 @@ def analyser(tk, d, veille, precedents):
     # Variation d'open interest contre la veille
     tv = veille["tickers"].get(tk) if veille else None
     seance_veille = (tv or {}).get("cours", {}).get("date_seance")
+    # Séances restées sans collecte entre la veille et le jour
+    if not tv:
+        res["seances_manquantes"] = {"statut": "pas de collecte de la veille pour ce ticker"}
+    else:
+        res["seances_manquantes"] = sm = seances_manquantes(cours, seance, seance_veille)
+        if sm.get("nb"):
+            res["avertissements"].append(
+                f"SÉANCES MANQUANTES : {'au moins ' if sm['decompte_minimal'] else ''}{sm['nb']} séance(s) de bourse "
+                f"sans collecte exploitable entre la veille ({seance_veille}) et le jour ({seance}) : {', '.join(sm['dates'])}. "
+                f"La variation d'open interest couvre {sm['nb'] + 1} séances alors que le volume est celui du jour seul : "
+                "elle ne peut pas être attribuée à la séance du jour"
+            )
+        elif sm.get("statut") == INDISPO and seance_veille != seance:
+            res["avertissements"].append(
+                "séances manquantes entre la veille et le jour : INDISPONIBLE (dates de séance ou historique des cours absents)"
+            )
+
     if not tv:
         res["open_interest"] = {"statut": "pas de collecte de la veille pour ce ticker"}
     elif seance_veille == seance:
@@ -349,6 +387,9 @@ def main():
     print(f"Fichier : {f.relative_to(RACINE)}")
     for tk, r in sortie["tickers"].items():
         print(f"  {tk} : historique {r['fiabilite_historique']}, candidat = {r['candidat']}")
+        sm = r["seances_manquantes"]
+        if sm.get("nb"):
+            print(f"    ATTENTION : {sm['nb']} séance(s) manquante(s) depuis la veille ({', '.join(sm['dates'])})")
 
 
 if __name__ == "__main__":

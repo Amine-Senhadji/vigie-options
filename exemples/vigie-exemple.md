@@ -12,7 +12,7 @@ Historique : 21 séances collectées pour chaque ticker (fiabilité correcte).
 
 **Cours.** Inchangé (z-score du mouvement : 0). Le volume de l'action est même sous sa moyenne (0,74 fois).
 
-**Explication banale la plus probable.** Résultats prévus le 20/10 : une montée simultanée des calls et des puts avant une publication correspond souvent à des stratégies de volatilité (straddles, strangles) ou à des couvertures, sans pari directionnel.
+**Explication banale la plus probable.** Une publication de résultats est prévue le 20/10 : une montée simultanée des calls et des puts avant une publication correspond souvent à des stratégies de volatilité (straddles, strangles) ou à des couvertures, sans pari directionnel.
 
 **À vérifier.** La date de résultats sur le site de l'émetteur, l'activité sur les autres valeurs du secteur le même jour, et si le volume est concentré sur une seule transaction (bloc) ou réparti.
 

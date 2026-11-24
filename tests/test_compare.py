@@ -200,3 +200,79 @@ def test_jour_collecte_pendant_seance_non_evaluable(dossier, debut, monkeypatch)
     r = resultat(dossier, jours[-1])["tickers"]["AAPL"]
     assert r["candidat"] == "NON EVALUABLE"
     assert "pendant la séance" in r["avertissements"][0]
+
+
+def test_seances_consecutives_et_week_end_aucune_seance_manquante(dossier, debut, monkeypatch):
+    jours = jours_ouvres(debut, 6)  # du lundi au lundi suivant
+    for j in jours:
+        ecrire_jour(dossier, j, ["AAPL"])
+    lancer_compare(monkeypatch)
+    r = resultat(dossier, jours[-1])["tickers"]["AAPL"]
+    assert r["seances_manquantes"] == {
+        "seance_veille": jours[-2].isoformat(),  # vendredi : le week-end n'est pas une séance
+        "nb": 0,
+        "dates": [],
+        "decompte_minimal": False,
+    }
+    assert not any("manquantes" in a.lower() for a in r["avertissements"])
+
+
+def test_seances_manquantes_entre_la_veille_et_le_jour(dossier, debut, monkeypatch, capsys):
+    jours = jours_ouvres(debut, 11)  # dernier jour : lundi 17 août
+    sautes = jours[-3:-1]  # jeudi 13 et vendredi 14 : aucune collecte
+    for j in jours:
+        if j not in sautes:
+            ecrire_jour(dossier, j, ["AAPL"])
+    lancer_compare(monkeypatch)
+    r = resultat(dossier, jours[-1])["tickers"]["AAPL"]
+    assert r["seances_manquantes"] == {
+        "seance_veille": "2026-08-12",
+        "nb": 2,
+        "dates": ["2026-08-13", "2026-08-14"],
+        "decompte_minimal": False,
+    }
+    alerte = next(a for a in r["avertissements"] if a.startswith("SÉANCES MANQUANTES"))
+    assert "2 séance(s) de bourse sans collecte exploitable entre la veille (2026-08-12) et le jour (2026-08-17)" in alerte
+    assert "2026-08-13, 2026-08-14" in alerte
+    assert "couvre 3 séances" in alerte
+    assert "ATTENTION : 2 séance(s) manquante(s) depuis la veille (2026-08-13, 2026-08-14)" in capsys.readouterr().out
+
+
+def test_collecte_pendant_seance_exclue_compte_comme_seance_manquante(dossier, debut, monkeypatch):
+    jours = jours_ouvres(debut, 4)
+    for j in jours:
+        ecrire_jour(dossier, j, ["AAPL"])
+    modifier(dossier, jours[-2], lambda d: d.update(collecte_pendant_seance=True))
+    lancer_compare(monkeypatch)
+    r = resultat(dossier, jours[-1])["tickers"]["AAPL"]
+    assert r["seances_manquantes"]["dates"] == [jours[-2].isoformat()]
+    assert any(a.startswith("SÉANCES MANQUANTES") for a in r["avertissements"])
+
+
+def test_meme_seance_que_la_veille_aucune_seance_manquante(dossier, debut, monkeypatch):
+    vendredi = jours_ouvres(debut, 5)[-1]
+    ecrire_jour(dossier, vendredi, ["AAPL"])
+    ecrire_jour(dossier, vendredi + timedelta(days=1), ["AAPL"])
+    lancer_compare(monkeypatch)
+    r = resultat(dossier, vendredi + timedelta(days=1))["tickers"]["AAPL"]
+    assert r["seances_manquantes"]["nb"] == 0
+    assert not any("manquantes" in a.lower() for a in r["avertissements"])
+
+
+def test_seances_manquantes_jamais_estimees():
+    cours = {"historique_90j": [{"date": d} for d in ("2026-08-10", "2026-08-11", "2026-08-12")]}
+    # Sans calendrier des séances ou sans date de veille : INDISPONIBLE, pas de décompte en jours ouvrés
+    assert compare.seances_manquantes({}, "2026-08-12", "2026-08-10") == {"statut": "INDISPONIBLE"}
+    assert compare.seances_manquantes(cours, "INDISPONIBLE", "2026-08-10") == {"statut": "INDISPONIBLE"}
+    assert compare.seances_manquantes(cours, "2026-08-12", None) == {"statut": "INDISPONIBLE"}
+    # Veille plus ancienne que l'historique des cours : le décompte est un minimum, et il le dit
+    r = compare.seances_manquantes(cours, "2026-08-12", "2026-03-02")
+    assert (r["nb"], r["decompte_minimal"]) == (2, True)
+
+
+def test_premiere_collecte_pas_de_veille(dossier, debut, monkeypatch):
+    ecrire_jour(dossier, debut, ["AAPL"])
+    lancer_compare(monkeypatch)
+    r = resultat(dossier, debut)["tickers"]["AAPL"]
+    assert "pas de collecte de la veille" in r["seances_manquantes"]["statut"]
+    assert not any("manquantes" in a.lower() for a in r["avertissements"])
