@@ -10,6 +10,7 @@
 
 ### Détection
 
+- Le volume d'un contrat n'est compté que si son dernier échange date de la séance. Yahoo laisse affiché le volume du dernier jour où le contrat a traité, parfois ancien, et ce volume gonflait le total du jour. Les volumes sont recalculés à partir des contrats des fichiers bruts déjà collectés, historique compris.
 - `compare.py` détecte les séances de bourse sans collecte entre la veille et le jour (`seances_manquantes`) et ajoute un avertissement « SÉANCES MANQUANTES ». L'analyste et la vigie le reprennent en tête de leur sortie, et la vigie plafonne sa confiance à « faible ».
 
 ### Agents
@@ -18,7 +19,7 @@
 
 ### Tests
 
-- Passage de 29 à 45 tests.
+- Passage de 29 à 51 tests.
 
 ## 1.1.0
 

@@ -33,6 +33,9 @@ class FakeTicker:
         return self._h
 
     def option_chain(self, echeance):
+        # comme Yahoo : horodatage UTC, ici 15 h 30 à New York le jour de la séance
+        dernier = (pd.Timestamp(self.jour, tz="America/New_York") + pd.Timedelta(hours=15.5)).tz_convert("UTC")
+
         def tableau(type_):
             strikes = [90.0, 100.0, 110.0]
             volumes = [float(self._rng.integers(10, 100)) * (20 if self.choc else 1) for _ in strikes]
@@ -44,7 +47,7 @@ class FakeTicker:
                     "strike": strikes,
                     "volume": volumes,
                     "openInterest": oi,
-                    "lastTradeDate": pd.Timestamp(self.jour),
+                    "lastTradeDate": dernier,
                 }
             )
 

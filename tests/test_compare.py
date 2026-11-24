@@ -276,3 +276,96 @@ def test_premiere_collecte_pas_de_veille(dossier, debut, monkeypatch):
     r = resultat(dossier, debut)["tickers"]["AAPL"]
     assert "pas de collecte de la veille" in r["seances_manquantes"]["statut"]
     assert not any("manquantes" in a.lower() for a in r["avertissements"])
+
+
+def test_dernier_echange_date_a_l_heure_de_new_york():
+    def contrat(dernier, volume=40):
+        return {"volume": volume, "dernier_echange": dernier}
+
+    assert compare.volume_seance(contrat("2026-08-20 19:59:00+00:00"), "2026-08-20") == 40  # 15 h 59 à New York
+    assert compare.volume_seance(contrat("2026-08-21 00:10:00+00:00"), "2026-08-20") == 40  # 20 h 10 à New York, le 20
+    assert compare.volume_seance(contrat("2026-08-21 00:10:00+00:00"), "2026-08-21") == 0
+    assert compare.volume_seance(contrat("2026-08-20 19:59:00"), "2026-08-20") == 40  # sans fuseau : UTC, comme Yahoo
+    assert compare.volume_seance(contrat("2026-07-30 14:40:00+00:00"), "2026-08-20") == 0  # volume d'une séance passée
+    assert compare.volume_seance(contrat("INDISPONIBLE"), "2026-08-20") == 0  # date inconnue : pas compté
+    assert compare.volume_seance(contrat("2026-08-20 19:59:00+00:00", volume="INDISPONIBLE"), "2026-08-20") is None
+
+
+def vieillir(data, nb, dernier="2026-07-30 14:40:00+00:00", volume=None):
+    """Donne aux `nb` premiers contrats échangés un dernier échange ancien ; renvoie leur volume total."""
+    cibles = [c for c in contrats(data) if isinstance(c["volume"], int)][:nb]
+    for c in cibles:
+        c["dernier_echange"] = dernier
+        if volume is not None:
+            c["volume"] = volume
+    return sum(c["volume"] for c in cibles)
+
+
+def test_volume_ancien_exclu_du_volume_du_jour(dossier, debut, monkeypatch):
+    jours = jours_ouvres(debut, 2)
+    for j in jours:
+        ecrire_jour(dossier, j, ["AAPL"])
+    brut = json.loads((dossier / f"brut-{jours[-1]}.json").read_text())
+    total_affiche = brut["tickers"]["AAPL"]["options"]["volume_calls"] + brut["tickers"]["AAPL"]["options"]["volume_puts"]
+    ecarte = {}
+    modifier(dossier, jours[-1], lambda d: ecarte.update(volume=vieillir(d, 3)))
+    lancer_compare(monkeypatch)
+    vo = resultat(dossier, jours[-1])["tickers"]["AAPL"]["volume_options"]
+    assert ecarte["volume"] > 0
+    assert vo["jour"] == total_affiche - ecarte["volume"]
+    assert vo["calls"] + vo["puts"] == vo["jour"]
+    assert vo["volume_ancien_ecarte"] == ecarte["volume"]
+    assert vo["contrats_au_volume_ancien"] == 3
+    assert vo["contrats_au_dernier_echange_inconnu"] == 0
+
+
+def test_dernier_echange_inconnu_pas_compte_mais_signale(dossier, debut, monkeypatch):
+    jours = jours_ouvres(debut, 2)
+    for j in jours:
+        ecrire_jour(dossier, j, ["AAPL"])
+    modifier(dossier, jours[-1], lambda d: vieillir(d, 2, dernier="INDISPONIBLE"))
+    lancer_compare(monkeypatch)
+    vo = resultat(dossier, jours[-1])["tickers"]["AAPL"]["volume_options"]
+    assert vo["contrats_au_volume_ancien"] == 2
+    assert vo["contrats_au_dernier_echange_inconnu"] == 2
+
+
+def test_historique_recalcule_depuis_les_fichiers_bruts(dossier, debut, monkeypatch):
+    jours = jours_ouvres(debut, 12)
+    for j in jours:
+        ecrire_jour(dossier, j, ["AAPL"])
+    attendus = []
+    for j in jours[:-1]:  # fichiers déjà collectés : totaux gonflés par du volume ancien
+
+        def gonfler(d, attendus=attendus):
+            vieillir(d, 1, volume=50_000)
+            o = d["tickers"]["AAPL"]["options"]
+            o["volume_calls"] += 50_000
+            du_jour = [c for c in o["contrats"] if isinstance(c["volume"], int) and "2026-07-30" not in c["dernier_echange"]]
+            attendus.append(sum(c["volume"] for c in du_jour))
+
+        modifier(dossier, j, gonfler)
+    lancer_compare(monkeypatch)
+    vo = resultat(dossier, jours[-1])["tickers"]["AAPL"]["volume_options"]
+    assert vo["nb_jours"] == 11
+    assert (vo["min"], vo["max"]) == (min(attendus), max(attendus))  # aucun des 50 000 contrats anciens n'y figure
+    assert vo["max"] < 50_000
+
+
+def test_un_gros_volume_ancien_n_entre_pas_dans_les_strikes_actifs(dossier, debut, monkeypatch):
+    jours = jours_ouvres(debut, 2)
+    for j in jours:
+        ecrire_jour(dossier, j, ["AAPL"])
+    modifier(dossier, jours[-1], lambda d: vieillir(d, 1, volume=50_000))
+    lancer_compare(monkeypatch)
+    oi = resultat(dossier, jours[-1])["tickers"]["AAPL"]["open_interest"]
+    assert all(c["volume_seance"] < 50_000 for c in oi["strikes_les_plus_actifs"])
+    assert all(c["volume_seance"] == c["volume"] for c in oi["strikes_les_plus_actifs"])
+    assert oi["strikes_actifs"]["volume"] < 50_000
+
+
+def test_sans_date_de_seance_le_volume_reste_indisponible():
+    contrat = {"type": "call", "volume": 10, "dernier_echange": "2026-08-20 19:59:00+00:00"}
+    d = {"cours": {"date_seance": "INDISPONIBLE"}, "options": {"contrats": [contrat]}}
+    assert compare.volume_options(d) == (None, None, None)
+    assert compare.volume_options({"cours": {"date_seance": "2026-08-20"}, "options": {"statut": "INDISPONIBLE"}}) == (None,) * 3

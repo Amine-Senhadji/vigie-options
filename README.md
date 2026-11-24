@@ -169,6 +169,7 @@ Les tests simulent Yahoo Finance. Ils vérifient notamment :
 - qu'un open interest figé ou en retard d'une séance est détecté ;
 - qu'un historique trop court n'est jamais qualifié, qu'un week-end n'est pas compté comme une séance, et qu'une collecte pendant la séance est exclue ;
 - qu'une séance sans collecte entre la veille et le jour est signalée, sans jamais compter un week-end ;
+- que le volume d'un contrat dont le dernier échange est antérieur à la séance n'est pas compté, y compris dans l'historique ;
 - qu'une requête en échec est retentée après une pause qui double, et qu'un échec de tous les tickers donne un code de sortie non nul sans rien écrire ;
 - que le journal refuse un ticker inventé, ne double aucune ligne et se complète à J+14 avec ses témoins.
 
