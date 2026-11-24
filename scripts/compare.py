@@ -30,6 +30,7 @@ NEW_YORK = ZoneInfo("America/New_York")  # les séances et les derniers échange
 
 # Critères du marquage "candidat" : volontairement explicites et modifiables.
 SEUIL_RANG_VOLUME = 90  # volume d'options >= 90e centile de son propre historique
+SEUIL_Z_VOLUME = 2.0  # et z-score du volume d'options >= 2 : le rang seul retient une séance sur dix par construction
 MIN_JOURS_HISTORIQUE = 10  # en dessous, on ne qualifie pas un volume d'inhabituel
 SEUIL_Z_PRIX = 1.0  # mouvement du cours < 1 écart-type de ses variations récentes
 SEUIL_PART_OI_ZERO = 0.5  # au-delà de 50 % de contrats à open interest 0 (jour ou veille), variation d'OI non fiable
@@ -385,10 +386,19 @@ def analyser(tk, d, veille, precedents):
     elif num(vo.get("rang_percentile")) is None or num(oi.get("strikes_actifs", {}).get("delta_open_interest")) is None:
         candidat = "NON EVALUABLE"
         res["avertissements"].append("volume d'options ou variation d'open interest non mesurable aujourd'hui")
+    elif num(vo.get("z_score")) is None:
+        candidat = "NON EVALUABLE"
+        res["avertissements"].append("z-score du volume d'options non calculable (historique sans dispersion)")
     else:
         delta_oi = oi["strikes_actifs"]["delta_open_interest"]
         z = num(mv.get("z_score_mouvement"))
-        candidat = vo["rang_percentile"] >= SEUIL_RANG_VOLUME and delta_oi > 0 and z is not None and abs(z) < SEUIL_Z_PRIX
+        candidat = (
+            vo["rang_percentile"] >= SEUIL_RANG_VOLUME
+            and vo["z_score"] >= SEUIL_Z_VOLUME
+            and delta_oi > 0
+            and z is not None
+            and abs(z) < SEUIL_Z_PRIX
+        )
     res["candidat"] = candidat
 
     if seance != INDISPO and seance < d.get("_date_collecte", seance):
@@ -424,6 +434,7 @@ def main():
         "fichiers_exclus_collecte_pendant_seance": [nom for nom, _ in exclus],
         "criteres_candidat": {
             "rang_percentile_volume_options_min": SEUIL_RANG_VOLUME,
+            "z_score_volume_options_min": SEUIL_Z_VOLUME,
             "jours_historique_min": MIN_JOURS_HISTORIQUE,
             "delta_open_interest_strikes_actifs": "> 0",
             "nb_contrats_actifs": NB_CONTRATS_ACTIFS,

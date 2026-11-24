@@ -41,13 +41,16 @@ Le mouvement du jour est rapporté à l'écart-type des variations quotidiennes 
 
 ## 6. Le marquage « candidat »
 
-Un ticker est marqué `candidat` si les trois conditions sont réunies :
+Un ticker est marqué `candidat` si toutes les conditions sont réunies :
 
 | Condition | Seuil par défaut | Constante |
 |---|---|---|
 | Volume d'options inhabituel | rang ≥ 90e centile | `SEUIL_RANG_VOLUME` |
+| … et nettement hors de sa dispersion habituelle | z-score du volume ≥ 2 | `SEUIL_Z_VOLUME` |
 | Nouvelles positions ouvertes | variation d'open interest > 0 sur les 5 contrats les plus échangés | `NB_CONTRATS_ACTIFS` |
 | Cours peu affecté | \|z-score du mouvement\| < 1 | `SEUIL_Z_PRIX` |
+
+Le rang seul ne suffit pas : par construction, une séance sur dix atteint le 90e centile, le plus souvent une journée ordinaire un peu au-dessus de la médiane. Le z-score d'au moins 2 ne retient que les volumes nettement sortis de la dispersion habituelle du titre. Il est calculé avec l'écart-type de population ; s'il n'est pas calculable (historique sans dispersion), le marquage vaut `NON EVALUABLE`.
 
 Le marquage vaut `NON EVALUABLE` en dessous de 10 séances d'historique (`MIN_JOURS_HISTORIQUE`), si l'open interest est non fiable (à 0 sur plus de 50 % des contrats, ou figé : voir section 2), ou si la collecte a eu lieu pendant la séance (section 4). Les seuils sont volontairement simples, affichés dans chaque fichier de comparaison et modifiables en haut de `scripts/compare.py`. L'analyste part de ce marquage mais peut signaler un cas limite en expliquant pourquoi.
 

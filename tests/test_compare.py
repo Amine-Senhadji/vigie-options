@@ -369,3 +369,40 @@ def test_sans_date_de_seance_le_volume_reste_indisponible():
     d = {"cours": {"date_seance": "INDISPONIBLE"}, "options": {"contrats": [contrat]}}
     assert compare.volume_options(d) == (None, None, None)
     assert compare.volume_options({"cours": {"date_seance": "2026-08-20"}, "options": {"statut": "INDISPONIBLE"}}) == (None,) * 3
+
+
+def test_rang_eleve_sans_z_score_suffisant_n_est_pas_candidat(dossier, debut, monkeypatch):
+    """Une journée banale au sommet de l'historique : rang 100, mais à peine au-dessus de la médiane."""
+    jours = jours_ouvres(debut, 15)
+    for j in jours:
+        ecrire_jour(dossier, j, ["AAPL"], choc={"AAPL"} if j == jours[-1] else ())
+    histo = []
+    for j in jours[:-1]:
+        d = json.loads((dossier / f"brut-{j}.json").read_text())
+        histo.append(compare.volume_options(d["tickers"]["AAPL"])[0])
+
+    def juste_au_dessus(data):
+        cs = [c for c in contrats(data) if isinstance(c["volume"], int)]
+        cible = max(histo) + 1  # nouveau maximum, d'une seule unité
+        for c in cs:
+            c["volume"] = 0
+        cs[0]["volume"] = cible
+
+    modifier(dossier, jours[-1], juste_au_dessus)
+    lancer_compare(monkeypatch)
+    sortie = resultat(dossier, jours[-1])
+    vo = sortie["tickers"]["AAPL"]["volume_options"]
+    assert vo["rang_percentile"] == 100.0
+    assert vo["z_score"] < compare.SEUIL_Z_VOLUME
+    assert sortie["tickers"]["AAPL"]["candidat"] is False
+    assert sortie["criteres_candidat"]["z_score_volume_options_min"] == 2.0
+
+
+def test_le_choc_franchit_aussi_le_z_score(dossier, debut, monkeypatch):
+    jours = jours_ouvres(debut, 15)
+    for j in jours:
+        ecrire_jour(dossier, j, ["AAPL"], choc={"AAPL"} if j == jours[-1] else ())
+    lancer_compare(monkeypatch)
+    r = resultat(dossier, jours[-1])["tickers"]["AAPL"]
+    assert r["volume_options"]["z_score"] >= compare.SEUIL_Z_VOLUME
+    assert r["candidat"] is True
