@@ -67,14 +67,16 @@ tickers.<TICKER>
   date_seance, fiabilite_historique, candidat, avertissements[], evenements_30j
   cours            variation_pct, ecart_type_variations_30j_pct, z_score_mouvement,
                    ratio_volume_action_vs_moyenne_30
-  volume_options   jour, calls, puts, nb_jours, min, max, moyenne, mediane, rang_percentile, z_score
-  ratio_calls_puts jour, nb_jours, min, max, moyenne, mediane, rang_percentile, z_score
+  volume_options   jour, calls, puts, nb_jours, min, max, moyenne, mediane, rang_percentile, z_score_robuste, z_score_robuste_log,
+                   volume_ancien_ecarte, contrats_au_volume_ancien, contrats_au_dernier_echange_inconnu
+  ratio_calls_puts jour, nb_jours, min, max, moyenne, mediane, rang_percentile, z_score_robuste
   open_interest    contrats_compares, contrats_absents_la_veille, delta_total_calls, delta_total_puts,
                    strikes_actifs (nb_contrats_mesurables, volume, delta_open_interest, delta_oi_sur_volume),
                    part_oi_inchange_sur_contrats_echanges, nb_contrats_echanges_compares,
                    alignement_volume (nb_contrats, correlation_avec_volume_du_jour,
                                       correlation_avec_volume_de_la_veille),
-                   strikes_les_plus_actifs[], plus_fortes_variations_oi[], fiabilite, raison
+                   strikes_les_plus_actifs[], plus_fortes_variations_oi[] (avec volume et volume_seance),
+                   fiabilite, raison
                    (ou statut si la variation n'est pas mesurable)
   echeances        nb_retenues, entrees_dans_la_fenetre[], volume_echeances_entrees,
                    sorties_de_la_fenetre[], seance_d_echeance_mensuelle

@@ -190,7 +190,9 @@ def collecter_options(t, horizon_jours, aujourdhui=None):
         res[f"open_interest_{type_}s"] = sum(ois) if ois else INDISPO
     res["contrats_sans_volume"] = sum(1 for c in contrats if c["volume"] == INDISPO)
     res["note"] = (
-        "Le volume des contrats est sommé sur les échéances retenues uniquement. "
+        "volume_calls et volume_puts additionnent les volumes affichés par Yahoo sur les échéances retenues. "
+        "Yahoo affiche le volume du dernier jour où le contrat a traité (voir dernier_echange), parfois ancien : "
+        "compare.py ne retient que les contrats échangés le jour de la séance. "
         "Un volume INDISPONIBLE signifie en général aucun échange sur ce contrat."
     )
     return res

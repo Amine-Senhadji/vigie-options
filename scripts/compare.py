@@ -6,25 +6,34 @@ de chaque ticker (jusqu'à 30 collectes précédentes). Les collectes faites pen
 la séance américaine (volumes partiels) sont exclues de l'historique.
 Les séances de bourse restées sans collecte entre la veille et le jour sont
 détectées et signalées : la variation d'open interest couvre alors plusieurs séances.
+Le volume d'un contrat n'est compté que si son dernier échange date de la séance :
+Yahoo laisse affiché le volume du dernier jour où le contrat a traité, parfois ancien.
+Les volumes sont recalculés à partir des contrats des fichiers bruts, historique compris.
 Sortie : donnees/comparaison-AAAA-MM-JJ.json
 
 Usage : python3 scripts/compare.py [AAAA-MM-JJ]
 """
 
 import json
+import math
 import statistics as st
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from itertools import pairwise
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 RACINE = Path(__file__).resolve().parent.parent
 DOSSIER = RACINE / "donnees"
 INDISPO = "INDISPONIBLE"
 FENETRE = 30
+NEW_YORK = ZoneInfo("America/New_York")  # les séances et les derniers échanges sont datés à l'heure de New York
 
 # Critères du marquage "candidat" : volontairement explicites et modifiables.
 SEUIL_RANG_VOLUME = 90  # volume d'options >= 90e centile de son propre historique
+SEUIL_Z_VOLUME = 3.5  # et z robuste du volume d'options >= 3,5 (Iglewicz et Hoaglin) : le rang seul retient une séance sur dix
+ECHELLE_MAD = 1.4826  # 1,4826 × MAD = écart-type pour une loi normale
+ECHELLE_ECART_MOYEN = 1.2533  # repli quand la MAD vaut 0 : 1,2533 × écart moyen absolu à la médiane
 MIN_JOURS_HISTORIQUE = 10  # en dessous, on ne qualifie pas un volume d'inhabituel
 SEUIL_Z_PRIX = 1.0  # mouvement du cours < 1 écart-type de ses variations récentes
 SEUIL_PART_OI_ZERO = 0.5  # au-delà de 50 % de contrats à open interest 0 (jour ou veille), variation d'OI non fiable
@@ -42,13 +51,82 @@ def charger(f):
     return json.loads(f.read_text(encoding="utf-8"))
 
 
+def jour_dernier_echange(contrat):
+    """Date du dernier échange du contrat à l'heure de New York (AAAA-MM-JJ), ou None si elle est inconnue."""
+    try:
+        d = datetime.fromisoformat(str(contrat.get("dernier_echange")))
+    except ValueError:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)  # Yahoo horodate en UTC
+    return d.astimezone(NEW_YORK).date().isoformat()
+
+
+def volume_seance(contrat, seance):
+    """Volume du contrat pendant la séance.
+
+    Yahoo laisse affiché le volume du dernier jour où le contrat a traité : il n'appartient
+    à la séance que si le dernier échange date de ce jour-là. Sinon le volume de la séance
+    vaut 0, y compris quand la date du dernier échange est inconnue. None si le volume manque.
+    """
+    v = num(contrat.get("volume"))
+    if v is None:
+        return None
+    return v if jour_dernier_echange(contrat) == seance else 0
+
+
 def volume_options(tk_data):
-    o = (tk_data or {}).get("options", {})
-    c, p = num(o.get("volume_calls")), num(o.get("volume_puts"))
+    """Volume d'options de la séance (total, calls, puts), recalculé à partir des contrats du fichier brut.
+
+    Les totaux écrits par collect.py additionnent tous les volumes affichés, anciens compris : ils ne servent plus.
+    """
+    d = tk_data or {}
+    seance = d.get("cours", {}).get("date_seance")
+    contrats = d.get("options", {}).get("contrats")
+    if not contrats or not seance or seance == INDISPO:
+        return None, None, None
+    tot = {}
+    for type_ in ("call", "put"):
+        vols = [v for c in contrats if c.get("type") == type_ and (v := volume_seance(c, seance)) is not None]
+        tot[type_] = sum(vols) if vols else None
+    c, p = tot["call"], tot["put"]
     return (c + p if c is not None and p is not None else None), c, p
 
 
-def stats_historique(valeur, historique):
+def volume_ancien(opts, seance):
+    """Ce que le filtre écarte : volume affiché par Yahoo mais échangé un autre jour que la séance."""
+    ecartes = [
+        (c, jour_dernier_echange(c))
+        for c in opts.get("contrats", [])
+        if (num(c.get("volume")) or 0) > 0 and volume_seance(c, seance) == 0
+    ]
+    return {
+        "volume_ancien_ecarte": sum(c["volume"] for c, _ in ecartes),
+        "contrats_au_volume_ancien": len(ecartes),
+        "contrats_au_dernier_echange_inconnu": sum(1 for _, j in ecartes if j is None),
+    }
+
+
+def z_robuste(valeur, historique):
+    """z-score modifié d'Iglewicz et Hoaglin : (valeur − médiane) ÷ (1,4826 × MAD).
+
+    Si la MAD vaut 0 (plus de la moitié de l'historique partage une valeur), repli sur
+    1,2533 × écart moyen absolu à la médiane. None si l'historique est plat ou compte
+    moins de MIN_JOURS_HISTORIQUE séances.
+    """
+    if valeur is None or len(historique) < MIN_JOURS_HISTORIQUE:
+        return None
+    med = st.median(historique)
+    ecarts = [abs(h - med) for h in historique]
+    echelle = ECHELLE_MAD * st.median(ecarts)
+    if echelle == 0:
+        echelle = ECHELLE_ECART_MOYEN * st.mean(ecarts)
+    if echelle == 0:
+        return None
+    return (valeur - med) / echelle
+
+
+def stats_historique(valeur, historique, avec_log=False):
     if valeur is None:
         return {"statut": INDISPO}
     res = {"jour": valeur, "nb_jours": len(historique)}
@@ -62,8 +140,14 @@ def stats_historique(valeur, historique):
         mediane=st.median(historique),
         rang_percentile=round(100 * sum(1 for h in historique if h < valeur) / len(historique), 1),
     )
-    if len(historique) >= 5 and st.pstdev(historique) > 0:
-        res["z_score"] = round((valeur - st.mean(historique)) / st.pstdev(historique), 2)
+    z = z_robuste(valeur, historique)
+    if z is not None:
+        res["z_score_robuste"] = round(z, 3)
+    if avec_log:
+        # À titre d'information seulement : n'intervient jamais dans le marquage candidat
+        zl = z_robuste(math.log1p(valeur), [math.log1p(h) for h in historique])
+        if zl is not None:
+            res["z_score_robuste_log"] = round(zl, 3)
     return res
 
 
@@ -92,7 +176,7 @@ def correlation(x, y):
     return round(st.correlation(x, y), 3)
 
 
-def variation_oi(jour_opts, veille_opts):
+def variation_oi(jour_opts, veille_opts, seance, seance_veille):
     prec = {c["symbole"]: c for c in veille_opts.get("contrats", [])}
     lignes, delta = [], {"call": 0, "put": 0}
     compares = nouveaux = 0
@@ -106,17 +190,19 @@ def variation_oi(jour_opts, veille_opts):
         if d is not None:
             compares += 1
             delta[c["type"]] += d
+        vs = volume_seance(c, seance)
         lignes.append(
             {
                 **c,
-                "volume_veille": (num(cv.get("volume")) or 0) if cv else INDISPO,
+                "volume_seance": vs if vs is not None else INDISPO,
+                "volume_veille": (volume_seance(cv, seance_veille) or 0) if cv else INDISPO,
                 "open_interest_veille": oi_veille if oi_veille is not None else INDISPO,
                 "delta_open_interest": d if d is not None else INDISPO,
             }
         )
 
     def cle_vol(x):
-        return num(x["volume"]) or 0
+        return num(x["volume_seance"]) or 0
 
     top_volume = sorted(lignes, key=cle_vol, reverse=True)[:NB_CONTRATS_ACTIFS]
     top_delta = sorted(
@@ -125,7 +211,7 @@ def variation_oi(jour_opts, veille_opts):
         reverse=True,
     )[:5]
     for x in top_volume:
-        v, ov = num(x["volume"]), num(x["open_interest_veille"])
+        v, ov = num(x["volume_seance"]), num(x["open_interest_veille"])
         x["volume_sur_oi_veille"] = round(v / ov, 2) if v is not None and ov else INDISPO
 
     # Ouverture de positions mesurée là où le volume s'est concentré, pas sur toute la chaîne
@@ -162,6 +248,7 @@ def variation_oi(jour_opts, veille_opts):
         "strikes_les_plus_actifs": top_volume,
         "plus_fortes_variations_oi": top_delta,
         "note": "Comparaison contrat par contrat (même symbole), pas strike le plus actif contre strike le plus actif. "
+        "volume = chiffre affiché par Yahoo ; volume_seance = ce chiffre s'il a été échangé pendant la séance, sinon 0. "
         "Yahoo publie souvent l'open interest avec un jour de retard : voir alignement_volume.",
     }
 
@@ -179,7 +266,7 @@ def echeances(jour_opts, veille_opts, seance):
     j = set(jour_opts.get("echeances_retenues", []))
     v = set(veille_opts.get("echeances_retenues", []))
     entrees = sorted(j - v)
-    vol = sum(num(c.get("volume")) or 0 for c in jour_opts.get("contrats", []) if c.get("echeance") in entrees)
+    vol = sum(volume_seance(c, seance) or 0 for c in jour_opts.get("contrats", []) if c.get("echeance") in entrees)
     return {
         "nb_retenues": len(j),
         "entrees_dans_la_fenetre": entrees,
@@ -231,8 +318,10 @@ def analyser(tk, d, veille, precedents):
             hist_ratio.append(c / pu)
 
     tot, c, pu = volume_options(d)
-    res["volume_options"] = stats_historique(tot, hist_vol)
+    res["volume_options"] = stats_historique(tot, hist_vol, avec_log=True)
     res["volume_options"].update(calls=c if c is not None else INDISPO, puts=pu if pu is not None else INDISPO)
+    if tot is not None:
+        res["volume_options"].update(volume_ancien(opts, seance))
     ratio = round(c / pu, 3) if c is not None and pu else None
     res["ratio_calls_puts"] = stats_historique(ratio, [round(r, 3) for r in hist_ratio])
 
@@ -266,7 +355,7 @@ def analyser(tk, d, veille, precedents):
     elif opts.get("statut") == INDISPO or tv.get("options", {}).get("statut") == INDISPO:
         res["open_interest"] = {"statut": INDISPO}
     else:
-        res["open_interest"] = variation_oi(opts, tv["options"])
+        res["open_interest"] = variation_oi(opts, tv["options"], seance, seance_veille)
         res["echeances"] = echeances(opts, tv["options"], seance)
         e = res["echeances"]
         if e["entrees_dans_la_fenetre"]:
@@ -325,10 +414,19 @@ def analyser(tk, d, veille, precedents):
     elif num(vo.get("rang_percentile")) is None or num(oi.get("strikes_actifs", {}).get("delta_open_interest")) is None:
         candidat = "NON EVALUABLE"
         res["avertissements"].append("volume d'options ou variation d'open interest non mesurable aujourd'hui")
+    elif num(vo.get("z_score_robuste")) is None:
+        candidat = "NON EVALUABLE"
+        res["avertissements"].append("z-score robuste du volume d'options non calculable (historique plat)")
     else:
         delta_oi = oi["strikes_actifs"]["delta_open_interest"]
         z = num(mv.get("z_score_mouvement"))
-        candidat = vo["rang_percentile"] >= SEUIL_RANG_VOLUME and delta_oi > 0 and z is not None and abs(z) < SEUIL_Z_PRIX
+        candidat = (
+            vo["rang_percentile"] >= SEUIL_RANG_VOLUME
+            and vo["z_score_robuste"] >= SEUIL_Z_VOLUME
+            and delta_oi > 0
+            and z is not None
+            and abs(z) < SEUIL_Z_PRIX
+        )
     res["candidat"] = candidat
 
     if seance != INDISPO and seance < d.get("_date_collecte", seance):
@@ -364,6 +462,7 @@ def main():
         "fichiers_exclus_collecte_pendant_seance": [nom for nom, _ in exclus],
         "criteres_candidat": {
             "rang_percentile_volume_options_min": SEUIL_RANG_VOLUME,
+            "z_score_robuste_volume_options_min": SEUIL_Z_VOLUME,
             "jours_historique_min": MIN_JOURS_HISTORIQUE,
             "delta_open_interest_strikes_actifs": "> 0",
             "nb_contrats_actifs": NB_CONTRATS_ACTIFS,

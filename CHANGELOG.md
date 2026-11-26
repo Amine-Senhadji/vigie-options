@@ -4,12 +4,16 @@
 
 ### Collecte
 
+- La collecte est désormais recommandée le soir, après la clôture américaine (22 h 30 à Paris) : le matin, Yahoo renvoie l'open interest à 0 sur une grande partie de la chaîne.
 - `collect.py` retente les requêtes que Yahoo fait échouer (erreur ou réponse vide) : 3 essais, avec une pause de 2 puis 4 secondes.
 - Si aucun ticker n'a pu être collecté, le script n'écrit aucun fichier et sort avec le code 1. Une collecte réussie plus tôt le même jour n'est donc plus écrasée par une panne.
 - Une chaîne d'options renvoyée vide est notée dans `echeances_en_echec` au lieu d'interrompre le script.
 
 ### Détection
 
+- Le marquage `candidat` exige en plus un z-score robuste du volume d'options d'au moins 3,5 (`SEUIL_Z_VOLUME`) : le rang seul retenait une séance sur dix par construction. Le z robuste (médiane et MAD × 1,4826, repli sur 1,2533 × l'écart moyen si la MAD vaut 0, INDISPONIBLE si l'historique est plat) remplace le z-score classique, qu'une seule journée énorme rendait aveugle pendant des semaines. Seuil d'Iglewicz et Hoaglin.
+- `z_score_robuste_log` : le même z robuste sur log(1 + volume), enregistré à titre d'information seulement.
+- Le volume d'un contrat n'est compté que si son dernier échange date de la séance. Yahoo laisse affiché le volume du dernier jour où le contrat a traité, parfois ancien, et ce volume gonflait le total du jour. Les volumes sont recalculés à partir des contrats des fichiers bruts déjà collectés, historique compris.
 - `compare.py` détecte les séances de bourse sans collecte entre la veille et le jour (`seances_manquantes`) et ajoute un avertissement « SÉANCES MANQUANTES ». L'analyste et la vigie le reprennent en tête de leur sortie, et la vigie plafonne sa confiance à « faible ».
 
 ### Agents
@@ -18,7 +22,7 @@
 
 ### Tests
 
-- Passage de 29 à 45 tests.
+- Passage de 29 à 58 tests.
 
 ## 1.1.0
 
