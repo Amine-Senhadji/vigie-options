@@ -7,7 +7,9 @@ Ce document explique chaque indicateur, pourquoi il est calculé ainsi, et ce qu
 Un volume de 50 000 contrats est banal sur une très grande capitalisation et exceptionnel sur une petite. Toutes les comparaisons se font donc contre l'**historique propre** du ticker, jamais en valeur absolue.
 
 - **Rang percentile** : part des séances précédentes où le volume d'options était strictement inférieur à celui du jour. 100 signifie « plus haut volume de l'historique disponible ». C'est le critère principal, parce qu'il ne suppose aucune forme de distribution.
-- **Z-score** : écart à la moyenne, en écarts-types. Il est calculé dès 5 séances, mais reste instable sur un historique court. Il sert à départager deux tickers au même rang, pas à décider seul.
+- **Z-score robuste** (`z_score_robuste`) : écart à la médiane, rapporté à la dispersion habituelle mesurée par la MAD (médiane des écarts absolus à la médiane) : (volume − médiane) ÷ (1,4826 × MAD). C'est le « z-score modifié » d'Iglewicz et Hoaglin (B. Iglewicz et D. C. Hoaglin, *How to Detect and Handle Outliers*, ASQC Quality Press, 1993). Le facteur 1,4826 le ramène à l'échelle d'un z-score classique pour une loi normale. Quand plus de la moitié de l'historique partage une même valeur, la MAD vaut 0 : on la remplace par 1,2533 × l'écart moyen absolu à la médiane. Un historique plat (toutes les valeurs égales) n'a aucune dispersion : le z-score vaut alors INDISPONIBLE, comme en dessous de 10 séances.
+- **Pourquoi robuste** : une journée énorme dans l'historique gonfle la moyenne et l'écart-type classiques, et rend le titre aveugle pendant environ six semaines (un second choc plus modeste peut sortir avec un z classique négatif). Elle déplace à peine la médiane et la MAD.
+- **Z-score robuste du logarithme** (`z_score_robuste_log`) : la même formule appliquée à log(1 + volume). **À titre d'information seulement** : il n'intervient jamais dans le marquage. Il est enregistré pour comparer les deux versions sur des données réelles quand l'historique le permettra.
 
 ## 2. L'open interest, seule trace des positions nouvelles
 
@@ -46,11 +48,11 @@ Un ticker est marqué `candidat` si toutes les conditions sont réunies :
 | Condition | Seuil par défaut | Constante |
 |---|---|---|
 | Volume d'options inhabituel | rang ≥ 90e centile | `SEUIL_RANG_VOLUME` |
-| … et nettement hors de sa dispersion habituelle | z-score du volume ≥ 2 | `SEUIL_Z_VOLUME` |
+| … et nettement hors de sa dispersion habituelle | z-score robuste du volume ≥ 3,5 | `SEUIL_Z_VOLUME` |
 | Nouvelles positions ouvertes | variation d'open interest > 0 sur les 5 contrats les plus échangés | `NB_CONTRATS_ACTIFS` |
 | Cours peu affecté | \|z-score du mouvement\| < 1 | `SEUIL_Z_PRIX` |
 
-Le rang seul ne suffit pas : par construction, une séance sur dix atteint le 90e centile, le plus souvent une journée ordinaire un peu au-dessus de la médiane. Le z-score d'au moins 2 ne retient que les volumes nettement sortis de la dispersion habituelle du titre. Il est calculé avec l'écart-type de population ; s'il n'est pas calculable (historique sans dispersion), le marquage vaut `NON EVALUABLE`.
+Le rang seul ne suffit pas : par construction, une séance sur dix atteint le 90e centile, le plus souvent une journée ordinaire un peu au-dessus de la médiane. Le z-score robuste d'au moins 3,5 ne retient que les volumes nettement sortis de la dispersion habituelle du titre ; 3,5 est le seuil que recommandent Iglewicz et Hoaglin pour repérer une valeur aberrante. Sur des scénarios simulés (45 séances, 4 titres), il retient exactement les chocs plantés et écarte les journées ordinaires chargées (rang 100 avec un z robuste de 1,5 à 3,2). Les volumes simulés étant moins dispersés que les vrais, ce seuil sera revérifié sur l'historique réel. S'il n'est pas calculable (historique plat), le marquage vaut `NON EVALUABLE`.
 
 Le marquage vaut `NON EVALUABLE` en dessous de 10 séances d'historique (`MIN_JOURS_HISTORIQUE`), si l'open interest est non fiable (à 0 sur plus de 50 % des contrats, ou figé : voir section 2), ou si la collecte a eu lieu pendant la séance (section 4). Les seuils sont volontairement simples, affichés dans chaque fichier de comparaison et modifiables en haut de `scripts/compare.py`. L'analyste part de ce marquage mais peut signaler un cas limite en expliquant pourquoi.
 

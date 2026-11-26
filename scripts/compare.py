@@ -15,6 +15,7 @@ Usage : python3 scripts/compare.py [AAAA-MM-JJ]
 """
 
 import json
+import math
 import statistics as st
 import sys
 from datetime import date, datetime, timezone
@@ -30,7 +31,9 @@ NEW_YORK = ZoneInfo("America/New_York")  # les séances et les derniers échange
 
 # Critères du marquage "candidat" : volontairement explicites et modifiables.
 SEUIL_RANG_VOLUME = 90  # volume d'options >= 90e centile de son propre historique
-SEUIL_Z_VOLUME = 2.0  # et z-score du volume d'options >= 2 : le rang seul retient une séance sur dix par construction
+SEUIL_Z_VOLUME = 3.5  # et z robuste du volume d'options >= 3,5 (Iglewicz et Hoaglin) : le rang seul retient une séance sur dix
+ECHELLE_MAD = 1.4826  # 1,4826 × MAD = écart-type pour une loi normale
+ECHELLE_ECART_MOYEN = 1.2533  # repli quand la MAD vaut 0 : 1,2533 × écart moyen absolu à la médiane
 MIN_JOURS_HISTORIQUE = 10  # en dessous, on ne qualifie pas un volume d'inhabituel
 SEUIL_Z_PRIX = 1.0  # mouvement du cours < 1 écart-type de ses variations récentes
 SEUIL_PART_OI_ZERO = 0.5  # au-delà de 50 % de contrats à open interest 0 (jour ou veille), variation d'OI non fiable
@@ -104,7 +107,26 @@ def volume_ancien(opts, seance):
     }
 
 
-def stats_historique(valeur, historique):
+def z_robuste(valeur, historique):
+    """z-score modifié d'Iglewicz et Hoaglin : (valeur − médiane) ÷ (1,4826 × MAD).
+
+    Si la MAD vaut 0 (plus de la moitié de l'historique partage une valeur), repli sur
+    1,2533 × écart moyen absolu à la médiane. None si l'historique est plat ou compte
+    moins de MIN_JOURS_HISTORIQUE séances.
+    """
+    if valeur is None or len(historique) < MIN_JOURS_HISTORIQUE:
+        return None
+    med = st.median(historique)
+    ecarts = [abs(h - med) for h in historique]
+    echelle = ECHELLE_MAD * st.median(ecarts)
+    if echelle == 0:
+        echelle = ECHELLE_ECART_MOYEN * st.mean(ecarts)
+    if echelle == 0:
+        return None
+    return (valeur - med) / echelle
+
+
+def stats_historique(valeur, historique, avec_log=False):
     if valeur is None:
         return {"statut": INDISPO}
     res = {"jour": valeur, "nb_jours": len(historique)}
@@ -118,8 +140,14 @@ def stats_historique(valeur, historique):
         mediane=st.median(historique),
         rang_percentile=round(100 * sum(1 for h in historique if h < valeur) / len(historique), 1),
     )
-    if len(historique) >= 5 and st.pstdev(historique) > 0:
-        res["z_score"] = round((valeur - st.mean(historique)) / st.pstdev(historique), 2)
+    z = z_robuste(valeur, historique)
+    if z is not None:
+        res["z_score_robuste"] = round(z, 3)
+    if avec_log:
+        # À titre d'information seulement : n'intervient jamais dans le marquage candidat
+        zl = z_robuste(math.log1p(valeur), [math.log1p(h) for h in historique])
+        if zl is not None:
+            res["z_score_robuste_log"] = round(zl, 3)
     return res
 
 
@@ -290,7 +318,7 @@ def analyser(tk, d, veille, precedents):
             hist_ratio.append(c / pu)
 
     tot, c, pu = volume_options(d)
-    res["volume_options"] = stats_historique(tot, hist_vol)
+    res["volume_options"] = stats_historique(tot, hist_vol, avec_log=True)
     res["volume_options"].update(calls=c if c is not None else INDISPO, puts=pu if pu is not None else INDISPO)
     if tot is not None:
         res["volume_options"].update(volume_ancien(opts, seance))
@@ -386,15 +414,15 @@ def analyser(tk, d, veille, precedents):
     elif num(vo.get("rang_percentile")) is None or num(oi.get("strikes_actifs", {}).get("delta_open_interest")) is None:
         candidat = "NON EVALUABLE"
         res["avertissements"].append("volume d'options ou variation d'open interest non mesurable aujourd'hui")
-    elif num(vo.get("z_score")) is None:
+    elif num(vo.get("z_score_robuste")) is None:
         candidat = "NON EVALUABLE"
-        res["avertissements"].append("z-score du volume d'options non calculable (historique sans dispersion)")
+        res["avertissements"].append("z-score robuste du volume d'options non calculable (historique plat)")
     else:
         delta_oi = oi["strikes_actifs"]["delta_open_interest"]
         z = num(mv.get("z_score_mouvement"))
         candidat = (
             vo["rang_percentile"] >= SEUIL_RANG_VOLUME
-            and vo["z_score"] >= SEUIL_Z_VOLUME
+            and vo["z_score_robuste"] >= SEUIL_Z_VOLUME
             and delta_oi > 0
             and z is not None
             and abs(z) < SEUIL_Z_PRIX
@@ -434,7 +462,7 @@ def main():
         "fichiers_exclus_collecte_pendant_seance": [nom for nom, _ in exclus],
         "criteres_candidat": {
             "rang_percentile_volume_options_min": SEUIL_RANG_VOLUME,
-            "z_score_volume_options_min": SEUIL_Z_VOLUME,
+            "z_score_robuste_volume_options_min": SEUIL_Z_VOLUME,
             "jours_historique_min": MIN_JOURS_HISTORIQUE,
             "delta_open_interest_strikes_actifs": "> 0",
             "nb_contrats_actifs": NB_CONTRATS_ACTIFS,

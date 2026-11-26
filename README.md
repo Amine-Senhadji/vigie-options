@@ -39,7 +39,7 @@ Le volume d'options est l'un des rares endroits où une activité importante dev
 
 - 🧮 **Les chiffres sont calculés en Python, testés, jamais de tête.** Les agents décrivent un fichier de calculs, ils ne le produisent pas.
 - 🔍 **L'open interest est comparé contrat par contrat, sur les contrats où le volume s'est concentré**, pour distinguer les positions ouvertes des positions fermées. Un open interest figé ou en retard d'une séance est détecté.
-- 📏 **L'inhabituel se mesure contre l'historique propre de chaque titre**, pas en valeur absolue.
+- 📏 **L'inhabituel se mesure contre l'historique propre de chaque titre**, pas en valeur absolue : rang percentile d'au moins 90 et z-score robuste (médiane et MAD) d'au moins 3,5. Voir [la méthodologie](docs/methodologie.md).
 - 🚫 **Aucune recommandation, aucun « haussier » ni « baissier ».** Une activité est décrite comme une activité, avec d'abord son explication la plus banale.
 - 🕳️ **Aucun trou comblé.** Une donnée manquante reste `INDISPONIBLE`.
 - 📒 **Un journal de suivi tenu par Python**, complété automatiquement à J+14 et comparé à des témoins, pour mesurer au bout de quelques mois ce que valent vraiment les signalements.

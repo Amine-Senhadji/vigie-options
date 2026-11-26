@@ -25,7 +25,7 @@ tools: Bash, Read, Write
 
 | Sujet | Ce qu'il faut établir | Champs |
 |---|---|---|
-| Volume d'options | Position du jour dans la distribution passée du titre : minimum, maximum, médiane, rang percentile, et z-score s'il est fourni | `volume_options` |
+| Volume d'options | Position du jour dans la distribution passée du titre : minimum, maximum, médiane, rang percentile, et z-score robuste (`z_score_robuste`) s'il est fourni. `z_score_robuste_log` est une information secondaire : ne t'en sers ni pour signaler ni pour classer | `volume_options` |
 | Répartition calls/puts | Ratio du jour face à sa moyenne sur l'historique disponible | `ratio_calls_puts` |
 | Positions | Sur les contrats qui ont concentré les échanges, l'open interest a-t-il monté depuis la veille (des positions se sont ouvertes) ou baissé (des positions se sont fermées) ? Le total de la chaîne ne sert que de toile de fond | `open_interest.strikes_actifs` pour la somme, `delta_open_interest` de chaque contrat dans `open_interest.strikes_les_plus_actifs` pour le détail, `delta_total_calls` et `delta_total_puts` pour le total |
 | Calage dans le temps | La variation d'open interest suit-elle plutôt le volume du jour ou celui de la veille ? Aucune conclusion si les corrélations sont INDISPONIBLE | `open_interest.alignement_volume` |
@@ -37,7 +37,7 @@ tools: Bash, Read, Write
 
 Le cas recherché réunit trois constats : des options beaucoup plus échangées que d'ordinaire, des positions ouvertes à cette occasion, et un cours resté à peu près immobile au regard de ses variations courantes. Le champ `candidat` teste ces conditions mécaniquement, avec les seuils listés dans `criteres_candidat`. Prends-le comme base. Tu peux y ajouter un cas situé à la limite des seuils, à condition de justifier ce choix.
 
-Ordonne les signalements du plus au moins inhabituel pour le titre concerné : le rang percentile du volume d'options d'abord, son z-score pour départager. Le nombre brut de contrats n'entre pas en ligne de compte, car une grande valeur traite beaucoup d'options tous les jours.
+Ordonne les signalements du plus au moins inhabituel pour le titre concerné : le rang percentile du volume d'options d'abord, son z-score robuste pour départager. Le nombre brut de contrats n'entre pas en ligne de compte, car une grande valeur traite beaucoup d'options tous les jours.
 
 Chaque signalement se termine par les trois inconnues que ces données laissent entières :
 

@@ -1,4 +1,6 @@
 import json
+import math
+import statistics
 from datetime import timedelta
 
 import pytest
@@ -393,9 +395,9 @@ def test_rang_eleve_sans_z_score_suffisant_n_est_pas_candidat(dossier, debut, mo
     sortie = resultat(dossier, jours[-1])
     vo = sortie["tickers"]["AAPL"]["volume_options"]
     assert vo["rang_percentile"] == 100.0
-    assert vo["z_score"] < compare.SEUIL_Z_VOLUME
+    assert vo["z_score_robuste"] < compare.SEUIL_Z_VOLUME
     assert sortie["tickers"]["AAPL"]["candidat"] is False
-    assert sortie["criteres_candidat"]["z_score_volume_options_min"] == 2.0
+    assert sortie["criteres_candidat"]["z_score_robuste_volume_options_min"] == 3.5
 
 
 def test_le_choc_franchit_aussi_le_z_score(dossier, debut, monkeypatch):
@@ -404,5 +406,46 @@ def test_le_choc_franchit_aussi_le_z_score(dossier, debut, monkeypatch):
         ecrire_jour(dossier, j, ["AAPL"], choc={"AAPL"} if j == jours[-1] else ())
     lancer_compare(monkeypatch)
     r = resultat(dossier, jours[-1])["tickers"]["AAPL"]
-    assert r["volume_options"]["z_score"] >= compare.SEUIL_Z_VOLUME
+    assert r["volume_options"]["z_score_robuste"] >= compare.SEUIL_Z_VOLUME
     assert r["candidat"] is True
+    # Le z sur le logarithme est enregistré, à titre d'information seulement
+    assert "z_score_robuste_log" in r["volume_options"]
+    assert not any("log" in k for k in resultat(dossier, jours[-1])["criteres_candidat"])
+
+
+# --- z-score robuste (Iglewicz et Hoaglin), mêmes cas que le skill ---
+
+BASE = [120, 80, 100, 140, 90, 110, 130, 100, 95, 135]
+
+
+def test_z_robuste_valeurs_de_reference():
+    assert compare.z_robuste(150, BASE) == pytest.approx(2.023, abs=1e-3)
+    assert compare.z_robuste(130, BASE) == pytest.approx(1.124, abs=1e-3)
+    zl = compare.z_robuste(math.log1p(150), [math.log1p(b) for b in BASE])
+    assert zl == pytest.approx(1.681, abs=1e-3)
+
+
+def test_z_robuste_repli_quand_la_mad_est_nulle():
+    base = [100, 100, 100, 100, 100, 100, 90, 110, 120, 80]  # MAD 0, écart moyen 6
+    assert compare.z_robuste(150, base) == pytest.approx(6.649, abs=1e-3)
+
+
+def test_z_robuste_historique_plat_ou_trop_court():
+    assert compare.z_robuste(150, [100] * 10) is None
+    assert compare.z_robuste(150, BASE[:9]) is None
+
+
+def test_choc_modeste_apres_un_tres_gros_choc_reste_visible():
+    # Un très gros choc dans l'historique gonfle l'écart-type classique et masquait le suivant
+    base = [100, 110, 90, 105, 95, 100, 108, 92, 102, 98, 20000]
+    classique = (300 - statistics.mean(base)) / statistics.pstdev(base)
+    assert classique < 0
+    assert compare.z_robuste(300, base) >= compare.SEUIL_Z_VOLUME
+
+
+def test_journee_banale_ecartee_par_le_z_robuste():
+    # Nouveau maximum, donc rang 100, mais à peine au-dessus de la dispersion habituelle
+    stats = compare.stats_historique(150, BASE, avec_log=True)
+    assert stats["rang_percentile"] == 100.0
+    assert stats["z_score_robuste"] < compare.SEUIL_Z_VOLUME
+    assert stats["z_score_robuste_log"] == pytest.approx(1.681, abs=1e-3)
