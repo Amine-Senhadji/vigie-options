@@ -4,6 +4,10 @@
 Sortie : donnees/brut-AAAA-MM-JJ.json
 Toute donnée manquante est écrite "INDISPONIBLE", jamais estimée.
 
+Quand Yahoo échoue (erreur ou réponse vide), la requête est retentée après une pause
+qui double à chaque essai. Si aucun ticker n'a pu être collecté, rien n'est écrit et
+le script sort avec un code non nul.
+
 Usage : python3 scripts/collect.py [--horizon 60] [--forcer]
   --horizon : n'enregistre que les échéances d'options à moins de N jours (défaut 60).
   --forcer  : collecte même pendant la séance américaine. Le fichier est alors marqué
@@ -29,6 +33,8 @@ DOSSIER = RACINE / "donnees"
 INDISPO = "INDISPONIBLE"
 SOURCE = f"Yahoo Finance via yfinance {yf.__version__} (non officiel, différé)"
 PAUSE = 0.5  # secondes entre deux requêtes, pour ne pas se faire bloquer
+NB_TENTATIVES = 3  # essais par requête quand Yahoo échoue, le premier compris
+PAUSE_REPRISE = 2.0  # secondes avant le 2e essai ; doublées à chaque nouvel échec (2 s, puis 4 s)
 NEW_YORK = ZoneInfo("America/New_York")
 OUVERTURE, FERMETURE = heure(9, 30), heure(16, 0)  # séance américaine, heure de New York
 
@@ -57,6 +63,27 @@ def nombre(v, entier=False):
     return int(f) if entier else round(f, 4)
 
 
+def avec_reprises(appel, quoi, est_vide=None):
+    """Interroge Yahoo ; sur une erreur ou une réponse vide, réessaie après une pause qui double.
+
+    Renvoie la dernière réponse, même vide : c'est à l'appelant de l'écrire INDISPONIBLE.
+    Si le dernier essai lève une erreur, elle est propagée.
+    """
+    for essai in range(1, NB_TENTATIVES + 1):
+        try:
+            reponse = appel()
+            if est_vide is None or not est_vide(reponse) or essai == NB_TENTATIVES:
+                return reponse
+            motif = "réponse vide"
+        except Exception as e:
+            if essai == NB_TENTATIVES:
+                raise
+            motif = f"{type(e).__name__} : {e}"
+        attente = PAUSE_REPRISE * 2 ** (essai - 1)
+        print(f"  {quoi} : {motif}. Essai {essai + 1}/{NB_TENTATIVES} dans {attente:g} s", file=sys.stderr)
+        time.sleep(attente)
+
+
 def lire_watchlist():
     if not WATCHLIST.exists():
         return []
@@ -71,12 +98,17 @@ def lire_watchlist():
 def collecter_cours(t):
     res = {"source": SOURCE, "horodatage": maintenant()}
     try:
-        h = t.history(period="6mo", interval="1d", auto_adjust=False)
+        # yfinance masque la plupart des erreurs et renvoie un tableau vide : le vide est donc retenté aussi
+        h = avec_reprises(
+            lambda: t.history(period="6mo", interval="1d", auto_adjust=False),
+            "cours",
+            est_vide=lambda h: h is None or h.empty,
+        )
     except Exception as e:
         res.update(statut=INDISPO, erreur=str(e))
         return res
     if h is None or h.empty or "Close" not in h:
-        res["statut"] = INDISPO
+        res.update(statut=INDISPO, erreur="aucun cours renvoyé par la source")
         return res
 
     h = h.dropna(subset=["Close"])
@@ -107,7 +139,7 @@ def collecter_options(t, horizon_jours, aujourdhui=None):
     aujourdhui = aujourdhui or date.today()
     res = {"source": SOURCE, "horodatage": maintenant()}
     try:
-        echeances = list(t.options)
+        echeances = avec_reprises(lambda: list(t.options), "échéances d'options", est_vide=lambda e: not e)
     except Exception as e:
         res.update(statut=INDISPO, erreur=str(e))
         return res
@@ -123,9 +155,16 @@ def collecter_options(t, horizon_jours, aujourdhui=None):
     contrats = []
     for e in retenues:
         try:
-            chaine = t.option_chain(e)
+            chaine = avec_reprises(
+                lambda e=e: t.option_chain(e),
+                f"chaîne d'options {e}",
+                est_vide=lambda c: c.calls is None or c.puts is None,
+            )
         except Exception as ex:
             res["echeances_en_echec"].append({"echeance": e, "erreur": str(ex)})
+            continue
+        if chaine.calls is None or chaine.puts is None:
+            res["echeances_en_echec"].append({"echeance": e, "erreur": "chaîne vide renvoyée par la source"})
             continue
         for type_, df in (("call", chaine.calls), ("put", chaine.puts)):
             for _, r in df.iterrows():
@@ -167,7 +206,7 @@ def en_date(v):
 def collecter_evenements(t, jours=30, aujourdhui=None):
     res = {"source": SOURCE, "horodatage": maintenant(), "evenements": []}
     try:
-        cal = t.calendar
+        cal = avec_reprises(lambda: t.calendar, "événements")
     except Exception as e:
         res.update(statut=INDISPO, erreur=str(e))
         return res
@@ -192,6 +231,17 @@ def collecter_evenements(t, jours=30, aujourdhui=None):
     res["calendrier_brut"] = {k: str(v) for k, v in cal.items()}
     res["note"] = "Absence d'événement dans la source ne prouve pas l'absence d'événement : à vérifier sur le site de l'émetteur."
     return res
+
+
+def motifs_d_echec(d):
+    """Raisons pour lesquelles un ticker est inexploitable : il faut son cours et au moins un contrat d'option."""
+    motifs = []
+    for bloc in ("cours", "options"):
+        if d[bloc].get("statut") == INDISPO:
+            motifs.append(f"{bloc} : {d[bloc].get('erreur', INDISPO)}")
+    if not motifs and not d["options"].get("contrats"):
+        motifs.append("options : aucune chaîne lisible")
+    return motifs
 
 
 def main():
@@ -235,6 +285,16 @@ def main():
 
     donnees["horodatage_fin"] = maintenant()
     sortie = DOSSIER / f"brut-{jour}.json"
+
+    echecs = {tk: m for tk, d in donnees["tickers"].items() if (m := motifs_d_echec(d))}
+    if len(echecs) == len(tickers):
+        # Rien d'exploitable : on n'écrit pas, pour ne pas écraser une collecte réussie du même jour
+        # ni servir de « veille » vide à compare.py, qui signalera la séance manquante.
+        sys.exit(
+            f"Échec de la collecte : aucun des {len(tickers)} ticker(s) n'a pu être collecté "
+            f"après {NB_TENTATIVES} essais par requête. {sortie.name} n'a pas été écrit.\n"
+            + "\n".join(f"  {tk} : {' ; '.join(m)}" for tk, m in echecs.items())
+        )
     sortie.write_text(json.dumps(donnees, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
 
     print(f"Fichier : {sortie.relative_to(RACINE)}")

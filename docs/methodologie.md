@@ -19,7 +19,7 @@ Pour décider si des positions ont été ouvertes, on regarde **là où le volum
 
 Yahoo met souvent l'open interest à jour avec une séance de retard. C'est pourquoi il est recommandé de lancer la collecte le matin, avant l'ouverture américaine.
 
-**Contrôle du décalage d'une séance.** Si l'open interest a une séance de retard, la variation mesurée le matin correspond à l'avant-veille, alors que le volume est celui de la veille : le critère associerait deux séances différentes. Pour le détecter, `compare.py` calcule sur l'ensemble des contrats comparés la corrélation entre la variation absolue d'open interest et le volume du jour, puis avec le volume de la veille (`open_interest.alignement_volume`). Si la seconde dépasse la première de plus de 0,2 (`ECART_ALIGNEMENT`), un avertissement indique que la variation reflète probablement la séance précédente et la vigie plafonne sa confiance à « faible ». Les corrélations ne sont calculées qu'à partir de 10 contrats (`MIN_CONTRATS_CONTROLE`). Il s'agit d'une corrélation de Pearson, sensible aux contrats très échangés : c'est un indice, pas une preuve.
+**Contrôle du décalage d'une séance.** Si l'open interest a une séance de retard, la variation mesurée le matin correspond à l'avant-veille, alors que le volume est celui de la veille : le critère associerait deux séances différentes. Pour le détecter, `compare.py` calcule sur l'ensemble des contrats comparés la corrélation de la variation absolue d'open interest avec le volume du jour d'une part, avec celui de la veille d'autre part (`open_interest.alignement_volume`). Si la seconde dépasse la première de plus de 0,2 (`ECART_ALIGNEMENT`), un avertissement indique que la variation reflète probablement la séance précédente et la vigie plafonne sa confiance à « faible ». Les corrélations ne sont calculées qu'à partir de 10 contrats (`MIN_CONTRATS_CONTROLE`). Il s'agit d'une corrélation de Pearson, sensible aux contrats très échangés : c'est un indice, pas une preuve.
 
 **Contrôle de l'open interest figé.** Si l'open interest est identique à la veille sur au moins 95 % des contrats échangés (`SEUIL_PART_OI_INCHANGE`, à partir de 10 contrats), la source ne l'a probablement pas encore mis à jour : la variation est marquée `non fiable` et le marquage vaut `NON EVALUABLE`.
 
@@ -59,13 +59,15 @@ Le marquage vaut `NON EVALUABLE` en dessous de 10 séances d'historique (`MIN_JO
 
 Une séance n'est comptée qu'une fois, même si la collecte est relancée le même jour ou tourne un week-end. Les collectes faites pendant la séance ne comptent pas.
 
-## 8. Ce que ces données ne disent jamais
+**Séances manquantes entre la veille et le jour.** La « veille » est la dernière collecte exploitable, pas forcément la séance précédente : un oubli, une panne de Yahoo ou une collecte exclue laissent un trou. Or la variation d'open interest se mesure entre ces deux collectes. Après un trou de N séances, elle couvre N + 1 séances alors que le volume reste celui du jour seul : le critère « le volume du jour a ouvert des positions » comparerait deux périodes différentes. `compare.py` compte donc, pour chaque ticker, les séances de bourse situées strictement entre la séance de la veille et celle du jour (`seances_manquantes` : `nb`, `dates`). Le calendrier est celui de l'historique des cours collecté le jour même : les week-ends et les jours fériés n'y figurent pas et ne sont jamais comptés. Dès qu'il manque une séance, un avertissement « SÉANCES MANQUANTES » donne les dates, l'analyste et la vigie le reprennent en tête de leur sortie, et la vigie plafonne sa confiance à « faible ». Le marquage `candidat` n'est pas modifié. Sans dates de séance ou sans historique des cours, le décompte vaut `INDISPONIBLE` : il n'est pas estimé en jours ouvrés. Si la veille est plus ancienne que l'historique des cours (90 jours), `decompte_minimal` vaut `true` et l'avertissement précise « au moins ».
 
-- **La direction.** Chaque contrat a un acheteur et un vendeur. Un fort volume de calls peut être un pari à la hausse, une vente de calls couverts ou la couverture d'une position vendeuse.
+## 8. Ce que les données ne disent jamais
+
+- **La direction.** Toute transaction a deux côtés : face à chaque acheteur d'un contrat, il y a un vendeur. Un fort volume de calls peut être un pari à la hausse, une vente de calls couverts ou la couverture d'une position vendeuse.
 - **L'intention.** Ouvrir une position n'indique pas si elle est spéculative ou défensive. Les agents ont pour consigne de décrire une activité, jamais un « positionnement des institutionnels ».
-- **Les acteurs.** Les positions réelles des fonds américains (déclarations 13F) ne sont publiées que 45 jours après la fin de chaque trimestre.
+- **Les acteurs.** Ce que détiennent réellement les fonds américains (déclarations 13F) n'est publié que 45 jours après la fin de chaque trimestre.
 
-C'est pourquoi la vigie doit d'abord proposer **l'explication banale la plus probable** (résultats, dividende, rééquilibrage d'indice, échéance mensuelle, mouvement sectoriel) et pourquoi le journal de suivi existe : seul le taux de réussite mesuré sur plusieurs mois dit si les signalements valent quelque chose.
+C'est pourquoi la vigie doit d'abord proposer **l'explication banale la plus vraisemblable** (publication de résultats, dividende, recomposition d'indice, échéance mensuelle, mouvement sectoriel) et pourquoi le journal de suivi existe : seul le taux de réussite mesuré sur plusieurs mois dit si les signalements valent quelque chose.
 
 ## 9. Le journal de suivi
 
@@ -82,3 +84,7 @@ Le journal `suivi/journal.csv` sert à mesurer, au bout de quelques mois, si les
 ## 10. Qualité des données
 
 yfinance est une bibliothèque non officielle qui lit Yahoo Finance : cotations en différé, champs parfois vides ou faux, interface qui peut changer sans préavis. Le collecteur n'estime jamais une valeur manquante, et chaque bloc de données porte sa source et son horodatage pour pouvoir remonter à l'origine d'un chiffre.
+
+**Nouvelles tentatives.** Quand une requête à Yahoo échoue (erreur, ou réponse vide, car yfinance masque la plupart des erreurs de cours derrière un tableau vide), `collect.py` la retente : 3 essais au total (`NB_TENTATIVES`), séparés par une pause qui double, 2 s puis 4 s (`PAUSE_REPRISE`). Après le dernier essai, la donnée est écrite `INDISPONIBLE` avec l'erreur. Un ticker sans options listées coûte donc environ 6 secondes de plus par collecte.
+
+**Échec total.** Un ticker est exploitable s'il a un cours et au moins un contrat d'option. Si aucun ticker de la watchlist ne l'est, `collect.py` n'écrit aucun fichier et sort avec le code 1, en listant l'erreur de chaque ticker. Ne rien écrire évite d'écraser une collecte réussie plus tôt le même jour et de fournir une « veille » vide à la comparaison suivante, qui signalera la séance comme manquante. Un échec partiel écrit le fichier normalement (code 0), avec les blocs concernés marqués `INDISPONIBLE`.

@@ -57,6 +57,8 @@ tickers.<TICKER>
 
 Toute valeur manquante vaut la chaîne `"INDISPONIBLE"`. Un bloc entièrement manquant porte `"statut": "INDISPONIBLE"` et, si possible, `"erreur"`.
 
+Le fichier n'est pas écrit si aucun ticker n'a pu être collecté : `collect.py` sort alors avec un code non nul.
+
 ### `donnees/comparaison-AAAA-MM-JJ.json`
 
 ```text
@@ -77,6 +79,8 @@ tickers.<TICKER>
   echeances        nb_retenues, entrees_dans_la_fenetre[], volume_echeances_entrees,
                    sorties_de_la_fenetre[], seance_d_echeance_mensuelle
   qualite_open_interest  seuil_part_oi_zero_max, part_oi_zero_jour, part_oi_zero_veille
+  seances_manquantes     seance_veille, nb, dates[], decompte_minimal
+                         (ou statut si le décompte n'est pas possible)
 ```
 
 ### `rapports/signalements-AAAA-MM-JJ.json`

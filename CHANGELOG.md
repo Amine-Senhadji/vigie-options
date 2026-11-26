@@ -1,5 +1,25 @@
 # Historique des versions
 
+## Non publié
+
+### Collecte
+
+- `collect.py` retente les requêtes que Yahoo fait échouer (erreur ou réponse vide) : 3 essais, avec une pause de 2 puis 4 secondes.
+- Si aucun ticker n'a pu être collecté, le script n'écrit aucun fichier et sort avec le code 1. Une collecte réussie plus tôt le même jour n'est donc plus écrasée par une panne.
+- Une chaîne d'options renvoyée vide est notée dans `echeances_en_echec` au lieu d'interrompre le script.
+
+### Détection
+
+- `compare.py` détecte les séances de bourse sans collecte entre la veille et le jour (`seances_manquantes`) et ajoute un avertissement « SÉANCES MANQUANTES ». L'analyste et la vigie le reprennent en tête de leur sortie, et la vigie plafonne sa confiance à « faible ».
+
+### Agents
+
+- Prompts du collecteur, de l'analyste et de la vigie entièrement réécrits, à comportement égal.
+
+### Tests
+
+- Passage de 29 à 45 tests.
+
 ## 1.1.0
 
 ### Détection
@@ -28,4 +48,4 @@
 
 ## 1.0.0
 
-- Première version : agents collecteur, analyste et vigie, commande `/bourse`, `collect.py`, `compare.py`, tests sur données simulées.
+- Première version : les trois agents (collecteur, analyste, vigie), la commande `/bourse`, `collect.py`, `compare.py`, tests sur données simulées.
